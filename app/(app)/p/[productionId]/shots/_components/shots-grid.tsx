@@ -29,11 +29,11 @@ export function ShotsGrid({
               <img
                 src={shot.coverThumbUrl}
                 alt={shot.code}
-                className="aspect-video w-full object-cover"
+                className="thumb-frame aspect-video w-full object-cover"
                 loading="lazy"
               />
             ) : (
-              <div className="flex aspect-video w-full items-center justify-center bg-muted/50 font-mono text-xs text-muted-foreground">
+              <div className="thumb-frame flex aspect-video w-full items-center justify-center font-mono text-xs text-muted-foreground">
                 {shot.code}
               </div>
             )}

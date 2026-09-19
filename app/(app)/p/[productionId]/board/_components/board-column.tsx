@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "convex/react";
+import Link from "next/link";
 import { useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 import { Check, MoreHorizontal, Send, X } from "lucide-react";
@@ -29,11 +30,14 @@ import { cn } from "@/lib/utils";
 import { BoardGateDialog } from "./board-gate-dialog";
 import { BoardShotCard } from "./board-shot-card";
 import {
+  canEditBoardShot,
   GateChip,
   SHOT_DRAG_TYPE,
   showMutationError,
   STAGE_STATUS_BY_KEY,
   STAGE_STATUS_OPTIONS,
+  type BoardCardActions,
+  type BoardMember,
   type BoardShot,
   type StageInstanceStatus,
   type StageRow,
@@ -46,11 +50,17 @@ export function BoardColumn({
   shots,
   canDrag,
   onMoveShot,
+  members,
+  showThumbs,
+  actions,
 }: {
   stage: StageRow;
   shots: BoardShot[];
   canDrag: boolean;
   onMoveShot: (shotId: Id<"shots">, stage: StageKey) => void;
+  members: BoardMember[];
+  showThumbs: boolean;
+  actions: BoardCardActions;
 }) {
   const { role, viewer } = useStudio();
   const setStageStatus = useMutation(api.productions.setStageStatus);
@@ -114,10 +124,16 @@ export function BoardColumn({
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-baseline gap-1.5">
             <h2
-              title={stage.label}
+              title={`${stage.label} — open in Shots`}
               className="truncate font-display text-sm font-semibold tracking-tight"
             >
-              {stage.short}
+              {/* Column title → the Shots list filtered to this stage (spec f "zoom"). */}
+              <Link
+                href={`/p/${stage.productionId}/shots?stage=${stage.stage}`}
+                className="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60"
+              >
+                {stage.short}
+              </Link>
             </h2>
             <span className="text-[11px] tabular-nums text-muted-foreground">
               {shots.length}
@@ -240,7 +256,16 @@ export function BoardColumn({
 
       <div className="flex min-h-40 flex-1 flex-col gap-2 p-2">
         {shots.map((shot) => (
-          <BoardShotCard key={shot._id} shot={shot} canDrag={canDrag} />
+          <BoardShotCard
+            key={shot._id}
+            shot={shot}
+            canDrag={canDrag}
+            canEdit={canEditBoardShot(role, viewerId, shot)}
+            role={role}
+            members={members}
+            showThumb={showThumbs}
+            actions={actions}
+          />
         ))}
         {shots.length === 0 && (
           <p className="rounded-md border border-dashed px-2 py-6 text-center text-[11px] text-muted-foreground">

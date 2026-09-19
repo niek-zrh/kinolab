@@ -1,17 +1,30 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { ExternalLink, Film, GitCompare, ImageIcon, Star } from "lucide-react";
+import {
+  ExternalLink,
+  Film,
+  GitCompare,
+  ImageIcon,
+  Pencil,
+  Star,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/app/empty-state";
+import {
+  canEditGenerationDetails,
+  GenerationDetailsDialog,
+} from "@/components/app/generation-details-dialog";
 import { SlateStrip } from "@/components/app/slate-strip";
 import { STATUS_VAR } from "@/components/app/status-pill";
+import { useStudio } from "@/components/app/studio-context";
 import { UploadDropzone } from "@/components/app/upload-dropzone";
 import type { ShotStatusKey } from "@/convex/lib/domain";
 import { formatWhen } from "@/lib/format";
@@ -112,9 +125,17 @@ function VersionCard({
   canDecide: boolean;
 }) {
   const shortlist = useMutation(api.versions.shortlist);
+  const { role, viewer } = useStudio();
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const stripStatus = STRIP_STATUS[version.status];
   const openUrl = version.asset?.fileUrl ?? version.asset?.webViewLink ?? null;
   const decided = version.status === "picked" || version.status === "rejected";
+  // Creator or content.edit — an artist edits only their own uploads.
+  const canEditDetails = canEditGenerationDetails({
+    role,
+    viewerId: viewer?._id,
+    createdBy: version.createdBy,
+  });
 
   return (
     <Card
@@ -188,6 +209,16 @@ function VersionCard({
                   : copy.actions.shortlist}
               </Button>
             )}
+          {canEditDetails && (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => setDetailsOpen(true)}
+              title="Edit generation details"
+            >
+              <Pencil className="size-3" /> Edit details
+            </Button>
+          )}
           {openUrl && (
             <a
               href={openUrl}
@@ -209,6 +240,13 @@ function VersionCard({
           </Link>
         </div>
       </div>
+      {canEditDetails && (
+        <GenerationDetailsDialog
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+          version={version}
+        />
+      )}
     </Card>
   );
 }
@@ -220,7 +258,7 @@ function VersionThumb({ version }: { version: VersionRow }) {
 
   if (isVideo) {
     return (
-      <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-[#101114]">
+      <div className="thumb-frame relative aspect-video w-full shrink-0 overflow-hidden bg-muted">
         {asset?.thumbUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -230,7 +268,7 @@ function VersionThumb({ version }: { version: VersionRow }) {
           />
         )}
         <div className="absolute inset-0 flex items-center justify-center">
-          <Film className="size-6 text-white/70" />
+          <Film className="size-6 text-foreground/70" />
         </div>
       </div>
     );
@@ -242,7 +280,7 @@ function VersionThumb({ version }: { version: VersionRow }) {
       <img
         src={asset.thumbUrl}
         alt={alt}
-        className="aspect-video w-full shrink-0 object-cover"
+        className="thumb-frame aspect-video w-full shrink-0 object-cover"
       />
     );
   }

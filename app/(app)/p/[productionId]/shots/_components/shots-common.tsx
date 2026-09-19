@@ -83,12 +83,15 @@ export function SceneSelect({
   value,
   onChange,
   triggerClassName,
+  ariaLabel,
 }: {
   productionId: Id<"productions">;
   scenes: SceneRow[] | undefined;
   value: Id<"scenes"> | undefined;
   onChange: (sceneId: Id<"scenes"> | undefined) => void;
   triggerClassName?: string;
+  /** Optional accessible name for the trigger (tests, screen readers). */
+  ariaLabel?: string;
 }) {
   const createScene = useMutation(api.scenes.create);
   const [creating, setCreating] = useState(false);
@@ -163,7 +166,10 @@ export function SceneSelect({
         onChange(v === NONE_SENTINEL ? undefined : (v as Id<"scenes">));
       }}
     >
-      <SelectTrigger className={cn("w-full", triggerClassName)}>
+      <SelectTrigger
+        className={cn("w-full", triggerClassName)}
+        aria-label={ariaLabel}
+      >
         {selected ? (
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="font-mono text-xs">{selected.code}</span>
@@ -202,11 +208,14 @@ export function EpisodeSelect({
   value,
   onChange,
   triggerClassName,
+  ariaLabel,
 }: {
   episodes: EpisodeRow[] | undefined;
   value: Id<"episodes"> | undefined;
   onChange: (episodeId: Id<"episodes"> | undefined) => void;
   triggerClassName?: string;
+  /** Optional accessible name for the trigger (tests, screen readers). */
+  ariaLabel?: string;
 }) {
   const selected = episodes?.find((e) => e._id === value);
   return (
@@ -216,7 +225,10 @@ export function EpisodeSelect({
         onChange(v === NONE_SENTINEL ? undefined : (v as Id<"episodes">))
       }
     >
-      <SelectTrigger className={cn("w-full", triggerClassName)}>
+      <SelectTrigger
+        className={cn("w-full", triggerClassName)}
+        aria-label={ariaLabel}
+      >
         {selected ? (
           <span className="font-mono text-xs">{episodeLabel(selected)}</span>
         ) : (

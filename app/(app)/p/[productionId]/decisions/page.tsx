@@ -9,8 +9,9 @@ import { LedgerSection } from "./_components/ledger-table";
 
 /**
  * Decisions (spec F9) — the audit trail as a feature. Pending approvals up
- * top (gates decide inline), the full ledger below with scope filters and
- * CSV export.
+ * top (gates decide inline), the full ledger below with scope filters, the
+ * ledger CSV export and — for production.manage — the provenance export
+ * (v2 item c: every version's prompt, tool, model, seed, file and decision).
  */
 export default function DecisionsPage() {
   const params = useParams<{ productionId: string }>();
@@ -34,6 +35,7 @@ export default function DecisionsPage() {
         <LedgerSection
           productionId={productionId}
           productionCode={production?.code}
+          productionTimezone={production?.timezone}
         />
       </div>
     </main>

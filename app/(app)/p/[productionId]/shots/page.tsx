@@ -10,8 +10,21 @@ import {
   useSearchParams,
 } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Film, LayoutGrid, Plus, Rows3 } from "lucide-react";
+import {
+  ChevronDown,
+  ClipboardList,
+  Film,
+  LayoutGrid,
+  Plus,
+  Rows3,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/app/empty-state";
 import { useStudio } from "@/components/app/studio-context";
@@ -21,18 +34,18 @@ import {
   type ShotStatusKey,
   type StageKey,
 } from "@/convex/lib/domain";
-import { copy } from "@/lib/copy";
 import { useHotkeys } from "@/lib/hooks/use-hotkeys";
 import { cn } from "@/lib/utils";
 import { isContentEditor } from "./_components/shots-common";
 import { ShotsFilters } from "./_components/shots-filters";
 import { ShotsTable } from "./_components/shots-table";
 import { ShotsGrid } from "./_components/shots-grid";
+import { NewShotDialog } from "./_components/shots-create";
 import {
-  BulkCreateDialog,
-  BulkCreateForm,
-  NewShotDialog,
-} from "./_components/shots-create";
+  NewShotsDialog,
+  NewShotsPanel,
+  type NewShotsTab,
+} from "./_components/new-shots-dialog";
 
 const VIEW_KEY = "kinolab.shotsView";
 type ShotsView = "table" | "grid";
@@ -105,11 +118,14 @@ function ShotsScreen() {
 
   const canCreate = isContentEditor(role);
   const [newShotOpen, setNewShotOpen] = useState(false);
-  const [bulkOpen, setBulkOpen] = useState(false);
+  // "New shots" dialog: which tab it is open on, or closed (null).
+  const [newShotsTab, setNewShotsTab] = useState<NewShotsTab | null>(null);
+  // The empty state renders the same panel inline; its tab lives here.
+  const [inlineTab, setInlineTab] = useState<NewShotsTab>("generate");
   useHotkeys(
     {
       n: () => {
-        if (!bulkOpen) setNewShotOpen(true);
+        if (!newShotOpen && newShotsTab === null) setNewShotsTab("generate");
       },
     },
     canCreate,
@@ -136,23 +152,37 @@ function ShotsScreen() {
           <div className="flex items-center gap-2">
             <ViewToggle view={view} onChange={changeView} />
             {canCreate && (
-              <>
-                <BulkCreateDialog
-                  productionId={productionId}
-                  scenes={scenes}
-                  episodes={episodes}
-                  episodic={episodic === true}
-                  open={bulkOpen}
-                  onOpenChange={setBulkOpen}
-                />
+              <div className="inline-flex items-center" role="group" aria-label="Add shots">
                 <Button
                   size="sm"
-                  onClick={() => setNewShotOpen(true)}
+                  className="rounded-r-none"
+                  onClick={() => setNewShotsTab("generate")}
                   title="Press N"
                 >
-                  <Plus /> {copy.actions.newShot}
+                  <Plus /> New shots
                 </Button>
-              </>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        size="icon-sm"
+                        className="rounded-l-none border-l border-primary-foreground/20"
+                        aria-label="More ways to add shots"
+                      />
+                    }
+                  >
+                    <ChevronDown />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-auto min-w-44">
+                    <DropdownMenuItem onClick={() => setNewShotOpen(true)}>
+                      <Plus /> Single shot…
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setNewShotsTab("import")}>
+                      <ClipboardList /> Import list…
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
           </div>
         </div>
@@ -162,6 +192,7 @@ function ShotsScreen() {
           team={team}
           episodes={episodes}
           episodic={episodic === true}
+          canEditScenes={canCreate}
         />
 
         {shots === undefined ? (
@@ -181,14 +212,24 @@ function ShotsScreen() {
               </Button>
             </EmptyState>
           ) : (
-            <EmptyState icon={<Film />} title={copy.empty.shots}>
+            <EmptyState
+              icon={<Film />}
+              title={
+                canCreate
+                  ? "No shots yet. Name a scene and generate its shots, or import a list from your sheet."
+                  : "No shots yet."
+              }
+            >
               {canCreate && (
-                <div className="mt-1 w-full max-w-md text-left">
-                  <BulkCreateForm
+                <div className="mt-1 w-full max-w-2xl rounded-lg border bg-card p-4 text-left">
+                  <NewShotsPanel
                     productionId={productionId}
                     scenes={scenes}
                     episodes={episodes}
                     episodic={episodic === true}
+                    team={team}
+                    tab={inlineTab}
+                    onTabChange={setInlineTab}
                   />
                 </div>
               )}
@@ -209,14 +250,29 @@ function ShotsScreen() {
       </div>
 
       {canCreate && (
-        <NewShotDialog
-          productionId={productionId}
-          scenes={scenes}
-          episodes={episodes}
-          episodic={episodic === true}
-          open={newShotOpen}
-          onOpenChange={setNewShotOpen}
-        />
+        <>
+          <NewShotDialog
+            productionId={productionId}
+            scenes={scenes}
+            episodes={episodes}
+            episodic={episodic === true}
+            open={newShotOpen}
+            onOpenChange={setNewShotOpen}
+          />
+          <NewShotsDialog
+            productionId={productionId}
+            scenes={scenes}
+            episodes={episodes}
+            episodic={episodic === true}
+            team={team}
+            tab={newShotsTab ?? "generate"}
+            onTabChange={(tab) => setNewShotsTab(tab)}
+            open={newShotsTab !== null}
+            onOpenChange={(open) => {
+              if (!open) setNewShotsTab(null);
+            }}
+          />
+        </>
       )}
     </main>
   );

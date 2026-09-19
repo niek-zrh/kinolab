@@ -5,10 +5,15 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Copy, SendHorizonal } from "lucide-react";
+import { Copy, Pencil, SendHorizonal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  canEditGenerationDetails,
+  GenerationDetailsDialog,
+} from "@/components/app/generation-details-dialog";
+import { useStudio } from "@/components/app/studio-context";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { formatAgo, formatWhen } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -44,6 +49,14 @@ export function RightRail({
 }) {
   const meta = version.promptMeta;
   const decided = version.decidedBy !== undefined;
+  const { role, viewer } = useStudio();
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  // Creator or content.edit — the server re-checks on save.
+  const canEditDetails = canEditGenerationDetails({
+    role,
+    viewerId: viewer?._id,
+    createdBy: version.createdBy,
+  });
 
   return (
     <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-border bg-background">
@@ -92,28 +105,41 @@ export function RightRail({
           )}
         </div>
 
-        {/* Prompt metadata */}
+        {/* Generation details (spec v2 item c) */}
         <div className="border-b border-border px-4 py-3">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex items-center justify-between gap-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Prompt
+              Generation details
             </h3>
-            {meta?.prompt !== undefined && meta.prompt !== "" && (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                title="Copy prompt"
-                onClick={() => {
-                  void navigator.clipboard
-                    .writeText(meta.prompt ?? "")
-                    .then(() => toast.success("Prompt copied"))
-                    .catch(() => toast.error("Couldn't copy the prompt"));
-                }}
-              >
-                <Copy />
-                <span className="sr-only">Copy prompt</span>
-              </Button>
-            )}
+            <div className="flex items-center gap-0.5">
+              {meta?.prompt !== undefined && meta.prompt !== "" && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  title="Copy prompt"
+                  onClick={() => {
+                    void navigator.clipboard
+                      .writeText(meta.prompt ?? "")
+                      .then(() => toast.success("Prompt copied"))
+                      .catch(() => toast.error("Couldn't copy the prompt"));
+                  }}
+                >
+                  <Copy />
+                  <span className="sr-only">Copy prompt</span>
+                </Button>
+              )}
+              {canEditDetails && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  title="Edit generation details"
+                  onClick={() => setDetailsOpen(true)}
+                >
+                  <Pencil />
+                  <span className="sr-only">Edit details</span>
+                </Button>
+              )}
+            </div>
           </div>
           {meta ? (
             <dl className="space-y-2">
@@ -145,13 +171,24 @@ export function RightRail({
             </dl>
           ) : (
             <p className="text-xs text-muted-foreground">
-              No prompt metadata on this version.
+              No generation details on this version yet.
             </p>
           )}
           {version.note !== undefined && version.note !== "" && (
             <p className="mt-2 text-xs text-muted-foreground">
               Note: {version.note}
             </p>
+          )}
+          {canEditDetails && (
+            // `dark` on the content as well: the room holds the document dark
+            // (review-room.tsx), and the class keeps the popup's first frame
+            // dark like the room container itself.
+            <GenerationDetailsDialog
+              open={detailsOpen}
+              onOpenChange={setDetailsOpen}
+              version={version}
+              contentClassName="dark"
+            />
           )}
         </div>
 

@@ -42,12 +42,21 @@ const context = await browser.newContext({
   viewport: { width: 1440, height: 900 },
 });
 const page = await context.newPage();
+// Every entry names the route it happened on, so a chunk that fails to parse
+// mid-hot-reload can be told apart from a real page bug.
+const where = () => {
+  try {
+    return new URL(page.url()).pathname;
+  } catch {
+    return "?";
+  }
+};
 page.on("pageerror", (err) =>
-  errors.push("PAGEERROR: " + String(err).slice(0, 200)),
+  errors.push(`PAGEERROR @${where()}: ${String(err).slice(0, 160)}`),
 );
 page.on("console", (m) => {
   if (m.type() === "error" && !m.text().includes("Failed to load resource"))
-    errors.push(m.text().slice(0, 200));
+    errors.push(`@${where()}: ${m.text().slice(0, 160)}`);
 });
 
 const settle = async () => {
@@ -84,7 +93,13 @@ for (const theme of THEMES) {
 // 2. Throwaway user → studio → production (wizard) → shots → options
 // ---------------------------------------------------------------------------
 step = "signup";
-await page.getByText("New here? Create an account").click();
+// Hydration-safe (same as e2e/tests/helpers.ts signUp): the toggle is a React
+// handler, so keep clicking until the name field actually appears.
+for (let attempt = 0; attempt < 10; attempt++) {
+  await page.getByText("New here? Create an account").click().catch(() => undefined);
+  if (await page.locator("#name").isVisible().catch(() => false)) break;
+  await page.waitForTimeout(500);
+}
 await page.fill("#name", "Theme Tester");
 await page.fill("#email", `theme-${Date.now()}@slate.test`);
 await page.fill("#password", PASSWORD);

@@ -29,6 +29,7 @@ import {
   ScopeBadge,
   type ApprovalScope,
 } from "./approval-ui";
+import { ProvenanceExportButton } from "./provenance-export";
 
 type LedgerRow = (typeof api.approvals.ledger._returnType)[number];
 
@@ -54,9 +55,12 @@ const FILTERED_EMPTY: Record<ApprovalScope, string> = {
 export function LedgerSection({
   productionId,
   productionCode,
+  productionTimezone,
 }: {
   productionId: Id<"productions">;
   productionCode: string | undefined;
+  /** For the provenance export's dated filename. */
+  productionTimezone: string | undefined;
 }) {
   const [scope, setScope] = useState<"all" | ApprovalScope>("all");
   const ledger = useQuery(
@@ -94,7 +98,7 @@ export function LedgerSection({
             {f.label}
           </Button>
         ))}
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <Button
             variant="outline"
             size="sm"
@@ -103,6 +107,12 @@ export function LedgerSection({
           >
             <Download className="size-3.5" /> {copy.actions.exportCsv}
           </Button>
+          {/* production.manage only — renders nothing for other roles. */}
+          <ProvenanceExportButton
+            productionId={productionId}
+            productionCode={productionCode}
+            timezone={productionTimezone}
+          />
         </div>
       </div>
 

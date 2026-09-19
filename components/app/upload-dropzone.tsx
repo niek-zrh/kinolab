@@ -326,17 +326,22 @@ export function UploadDropzone({
             />
           }
         >
-          <Wand2 className="size-3" /> Prompt details
+          <Wand2 className="size-3" /> Generation details
           {metaSet && (
             <span
               className="size-1.5 rounded-full bg-foreground"
-              aria-label="Prompt details set"
+              aria-label="Generation details set"
             />
           )}
         </PopoverTrigger>
         <PopoverContent align="start" className="w-80">
           <p className="text-xs text-muted-foreground">
-            Applied to the next upload(s) — how these options were generated.
+            Tool, model, prompt and seed — so anyone can regenerate this
+            option or show how it was made.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Applied to the next uploads. You can edit them later on each
+            option.
           </p>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">

@@ -1,8 +1,9 @@
 "use client";
 
+import type { Id } from "@/convex/_generated/dataModel";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { ReactNode } from "react";
-import { X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -19,6 +20,7 @@ import {
   type ShotStatusKey,
 } from "@/convex/lib/domain";
 import { cn } from "@/lib/utils";
+import { EditSceneSheet } from "./edit-scene-sheet";
 import {
   episodeLabel,
   type EpisodeRow,
@@ -36,22 +38,27 @@ export const FILTER_KEYS = [
 
 /**
  * Combinable filters driven by the URL (?status=&stage=&scene=&assignee=&episode=)
- * so filtered views deep-link. router.replace keeps history clean.
+ * so filtered views deep-link. router.replace keeps history clean. With a
+ * scene selected, content editors get a pencil → "Edit scene" sheet (v2 item e).
  */
 export function ShotsFilters({
   scenes,
   team,
   episodes,
   episodic,
+  canEditScenes = false,
 }: {
   scenes: SceneRow[] | undefined;
   team: TeamMember[] | undefined;
   episodes: EpisodeRow[] | undefined;
   episodic: boolean;
+  /** content.edit roles: shows the pencil on the scene chip. */
+  canEditScenes?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [editingScene, setEditingScene] = useState<Id<"scenes"> | null>(null);
 
   const setParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -69,6 +76,7 @@ export function ShotsFilters({
   const anyActive = FILTER_KEYS.some((k) => searchParams.get(k) !== null);
 
   const selectedScene = scenes?.find((s) => s._id === scene);
+  const editingSceneRow = scenes?.find((s) => s._id === editingScene) ?? null;
   const selectedMember = team?.find((m) => m.userId === assignee);
   const selectedEpisode = episodes?.find((e) => e._id === episode);
   const selectedStatus = SHOT_STATUSES.find((s) => s.key === status);
@@ -142,6 +150,19 @@ export function ShotsFilters({
           </SelectItem>
         ))}
       </FilterSelect>
+      {selectedScene && canEditScenes && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="-ml-1 text-muted-foreground"
+          aria-label={`Edit scene ${selectedScene.code}`}
+          title="Edit scene"
+          onClick={() => setEditingScene(selectedScene._id)}
+        >
+          <Pencil />
+        </Button>
+      )}
 
       <FilterSelect
         placeholder="Assignee"
@@ -211,6 +232,19 @@ export function ShotsFilters({
         >
           <X /> Clear
         </Button>
+      )}
+
+      {canEditScenes && (
+        <EditSceneSheet
+          scene={editingSceneRow}
+          episodes={episodes}
+          episodic={episodic}
+          open={editingScene !== null}
+          onOpenChange={(open) => {
+            if (!open) setEditingScene(null);
+          }}
+          onDeleted={() => setParam("scene", null)}
+        />
       )}
     </div>
   );

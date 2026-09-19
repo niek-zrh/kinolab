@@ -94,24 +94,48 @@ export async function createProduction(
 }
 
 /**
- * Bulk-create shots from codes on the Shots tab. Uses the inline empty-state
- * form when present (fresh production); otherwise the "Paste codes" dialog —
- * both scoped so the two copies of the form can't be confused.
+ * `goto` for a signed-in user that survives the half-authenticated first
+ * load: the middleware accepts the session cookie but the Convex client has
+ * no token yet, so the app shell shows only its skeleton. One reload
+ * recovers; a second failure is a real problem and surfaces as an error.
+ */
+export async function gotoLoaded(page: Page, url: string) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.goto(url).catch(() => undefined);
+    const ready = await page
+      .getByLabel("Switch studio")
+      .waitFor({ timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (ready) return;
+  }
+  throw new Error(`app shell never loaded at ${url}`);
+}
+
+/**
+ * Bulk-create shots from codes on the Shots tab through "New shots" › Import
+ * (v2 item d): open the dialog, switch to the Import tab, paste one code per
+ * line, submit. Everything is scoped to the dialog so the empty state's
+ * inline copy of the same panel can never be confused with it.
  */
 export async function bulkCreateShots(page: Page, base: string, codes: string[]) {
   await gotoStable(page, `${base}/shots`);
-  await page.waitForLoadState("networkidle");
-  const inline = page.getByLabel("Shot codes");
-  if (await inline.count()) {
-    await inline.fill(codes.join("\n"));
-    await page.getByRole("button", { name: /Create \d+ shots?/i }).click();
-  } else {
-    await page.getByRole("button", { name: /bulk|paste/i }).first().click();
-    const dialog = page.getByRole("dialog");
-    await dialog.locator("textarea").fill(codes.join("\n"));
-    await dialog.getByRole("button", { name: /create/i }).click();
-    await dialog.waitFor({ state: "detached", timeout: 10_000 });
+  const openButton = page.getByRole("button", { name: "New shots", exact: true });
+  try {
+    await openButton.waitFor({ timeout: 20_000 });
+  } catch {
+    await page.reload(); // recover from a mid-compile chunk error / skeleton shell
+    await openButton.waitFor({ timeout: 20_000 });
   }
+  await openButton.click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("tab", { name: "Import" }).click();
+  await dialog.getByLabel("Shot codes").fill(codes.join("\n"));
+  await dialog
+    .getByRole("button", { name: /^Create \d+ shots?$/ })
+    .click();
+  // Wait for the modal to fully close so its overlay can't swallow clicks.
+  await dialog.waitFor({ state: "detached", timeout: 10_000 });
   await expect(page.getByText(codes[codes.length - 1]).first()).toBeVisible({
     timeout: 15_000,
   });

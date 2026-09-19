@@ -4,17 +4,109 @@ import { format } from "date-fns";
 import { Check, CircleDashed, Clock, X, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import {
+  SHOT_STATUSES,
+  WORKING_STATUSES,
+  type ShotStatusKey,
+  type StageKey,
+} from "@/convex/lib/domain";
 import { cn } from "@/lib/utils";
 
 /** Enriched stage instance as returned by api.productions.listStages. */
 export type StageRow = (typeof api.productions.listStages._returnType)[number];
-/** Enriched shot card as returned by api.shots.list. */
-export type BoardShot = (typeof api.shots.list._returnType)[number];
+/**
+ * Enriched shot card as returned by api.shots.list. `pickedVersionIndex` is
+ * what shots.get returns today; list rows gain it once the backend adds it
+ * (requested), and the "Picked" chip shows the number as soon as it arrives.
+ */
+export type BoardShot = (typeof api.shots.list._returnType)[number] & {
+  pickedVersionIndex?: number | null;
+};
+/** A studio member with an account — the only kind a shot can be assigned to. */
+export type BoardMember = {
+  userId: Id<"users">;
+  name: string;
+  image?: string | null;
+};
 export type StageInstanceStatus = StageRow["status"];
 export type GateStatus = StageRow["gateStatus"];
 
+/**
+ * Optimistic card edits while a mutation is in flight (stage from a drop,
+ * status / assignee / due date from the card menu). A field clears once the
+ * server value catches up, or rolls back when the server refuses.
+ */
+export type ShotOverride = {
+  stage?: StageKey;
+  status?: ShotStatusKey;
+  assigneeId?: Id<"users">;
+  dueDate?: string | null;
+};
+
+/** Card edit handlers, threaded from the page (which owns the overrides). */
+export type BoardCardActions = {
+  onSetStatus: (shotId: Id<"shots">, status: ShotStatusKey) => void;
+  onAssign: (shotId: Id<"shots">, userId: Id<"users">) => void;
+  onSetDueDate: (shotId: Id<"shots">, dueDate: string | null) => void;
+};
+
 /** dataTransfer type used when dragging shot cards between columns. */
 export const SHOT_DRAG_TYPE = "application/x-slate-shot";
+
+/** Per-device card density (spec f: header toggle Compact | Cards). */
+export const BOARD_VIEW_KEY = "kinolab.boardView";
+export type BoardView = "compact" | "cards";
+
+/** shots.list stops at MAX_LIST_SHOTS — the Shots page shows the same marker. */
+export const BOARD_SHOT_CAP = 1000;
+
+export function shotHref(shot: Pick<BoardShot, "productionId" | "_id">): string {
+  return `/p/${shot.productionId}/shots/${shot._id}`;
+}
+
+/** Roles with content.edit (drag between stages, edit any shot). */
+export function isContentEditor(role: string | null): boolean {
+  return (
+    role === "owner" ||
+    role === "producer" ||
+    role === "creative_director" ||
+    role === "supervisor"
+  );
+}
+
+/**
+ * Who may edit status / assignee / due date from the card — the shot page's
+ * rule (canEditShot): content.edit roles on any shot, an artist on their own.
+ * The server enforces it again; this only decides whether the menu renders.
+ */
+export function canEditBoardShot(
+  role: string | null,
+  viewerId: Id<"users"> | undefined,
+  shot: Pick<BoardShot, "assigneeId">,
+): boolean {
+  if (isContentEditor(role)) return true;
+  return (
+    role === "artist" &&
+    viewerId !== undefined &&
+    shot.assigneeId === viewerId
+  );
+}
+
+/** Statuses the menu offers: artists only move between working statuses. */
+export function statusOptionsFor(role: string | null) {
+  return role === "artist"
+    ? SHOT_STATUSES.filter((s) => WORKING_STATUSES.includes(s.key))
+    : SHOT_STATUSES;
+}
+
+/** An artist's own shot that has left the working statuses is status-locked. */
+export function statusLockedFor(
+  role: string | null,
+  shot: Pick<BoardShot, "status">,
+): boolean {
+  return role === "artist" && !WORKING_STATUSES.includes(shot.status);
+}
 
 /**
  * Convex error messages can be multiline ("[CONVEX M(...)] Server Error\n

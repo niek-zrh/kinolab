@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -41,6 +46,9 @@ import { DiscussionTab } from "./_components/discussion-tab";
 import { FilesTab } from "./_components/files-tab";
 import { HistoryTab } from "./_components/history-tab";
 import { showMutationError } from "./_components/error-toast";
+import { CodeHeading } from "./_components/code-heading";
+import { RenameCodeDialog } from "./_components/rename-code-dialog";
+import { ShotPlacement } from "./_components/shot-placement";
 
 const CONTENT_EDIT_ROLES = [
   "owner",
@@ -49,13 +57,70 @@ const CONTENT_EDIT_ROLES = [
   "supervisor",
 ];
 
+/** URL-addressable tabs (spec v2 item f): `?tab=options|discussion|files|history`. */
+const TAB_KEYS = ["options", "discussion", "files", "history"] as const;
+type TabKey = (typeof TAB_KEYS)[number];
+const isTabKey = (value: string | null): value is TabKey =>
+  value !== null && (TAB_KEYS as readonly string[]).includes(value);
+
 export default function ShotDetailPage() {
+  // useSearchParams needs a Suspense boundary for prerendering.
+  return (
+    <Suspense fallback={<ShotDetailSkeleton />}>
+      <ShotDetailScreen />
+    </Suspense>
+  );
+}
+
+function ShotDetailSkeleton() {
+  return (
+    <main className="flex-1 px-6 py-6">
+      <div className="mx-auto w-full max-w-6xl space-y-4">
+        <Skeleton className="h-4 w-16" />
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-7 w-96" />
+        <div className="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function ShotDetailScreen() {
   const params = useParams<{ productionId: string; shotId: string }>();
   const productionId = params.productionId as Id<"productions">;
   const shotId = params.shotId as Id<"shots">;
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const { studioId, role, viewer } = useStudio();
   const shot = useQuery(api.shots.get, { shotId });
+
+  // A character slot shot (v2 item b) lives on the character page; ledger,
+  // notification and history links still point here, so hand them over.
+  const slotRedirect =
+    shot?.elementId !== undefined
+      ? `/p/${productionId}/characters/${shot.elementId}?slot=${shot.slot ?? ""}`
+      : null;
+  useEffect(() => {
+    if (slotRedirect !== null) router.replace(slotRedirect);
+  }, [slotRedirect, router]);
+
+  const tabParam = searchParams.get("tab");
+  const tab: TabKey = isTabKey(tabParam) ? tabParam : "options";
+  const changeTab = (next: TabKey) => {
+    if (next === tab) return;
+    const qs = new URLSearchParams(searchParams.toString());
+    qs.set("tab", next);
+    router.replace(`${pathname}?${qs.toString()}`, { scroll: false });
+  };
+
+  // Pending code rename awaiting confirmation (null = dialog closed).
+  const [pendingCode, setPendingCode] = useState<string | null>(null);
   const team = useQuery(api.studios.team, studioId ? { studioId } : "skip");
   // Subscribed at page level so the Discussion tab count stays live.
   const comments = useQuery(api.comments.list, {
@@ -84,29 +149,14 @@ export default function ShotDetailPage() {
     (m): m is (typeof m & { userId: Id<"users"> }) => m.userId !== undefined,
   );
 
-  if (shot === undefined) {
-    return (
-      <main className="flex-1 px-6 py-6">
-        <div className="mx-auto w-full max-w-6xl space-y-4">
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-9 w-64" />
-          <Skeleton className="h-7 w-96" />
-          <div className="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Skeleton className="h-64" />
-            <Skeleton className="h-64" />
-            <Skeleton className="h-64" />
-          </div>
-        </div>
-      </main>
-    );
+  if (shot === undefined || slotRedirect !== null) {
+    return <ShotDetailSkeleton />;
   }
 
-  const metaBits = [
-    shot.scene ? shot.scene.code : null,
-    shot.episode ? `EP${String(shot.episode.number).padStart(2, "0")}` : null,
-    `${shot.versionsCount} option${shot.versionsCount === 1 ? "" : "s"}`,
-    shot.pickedVersionIndex !== null ? `picked v${shot.pickedVersionIndex}` : null,
-  ].filter((bit): bit is string => bit !== null);
+  const formerCode =
+    shot.formerCodes && shot.formerCodes.length > 0
+      ? shot.formerCodes[shot.formerCodes.length - 1]
+      : undefined;
 
   return (
     <main className="flex-1 px-6 py-6">
@@ -120,17 +170,29 @@ export default function ShotDetailPage() {
 
         <div className="mt-3 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
           <div className="min-w-0 flex-1">
-            <h1 className="font-mono text-2xl font-semibold tracking-tight">
-              {shot.code}
-            </h1>
+            {/* Code rename: content.edit only — never the assigned artist. */}
+            <CodeHeading
+              code={shot.code}
+              formerCode={formerCode}
+              canRename={canEditContent}
+              onSubmit={setPendingCode}
+            />
+            <RenameCodeDialog
+              shotId={shotId}
+              from={shot.code}
+              to={pendingCode}
+              onClose={() => setPendingCode(null)}
+            />
             <InlineTitle
               shotId={shotId}
               title={shot.title}
               canEdit={canEditFields}
             />
-            <p className="mt-1 font-mono text-xs text-muted-foreground">
-              {metaBits.join(" · ")}
-            </p>
+            <ShotPlacement
+              productionId={productionId}
+              shot={shot}
+              canEdit={canEditContent}
+            />
           </div>
           {shot.driveFolderId && (
             <a
@@ -281,7 +343,13 @@ export default function ShotDetailPage() {
           )}
         </div>
 
-        <Tabs defaultValue="options" className="mt-6">
+        <Tabs
+          value={tab}
+          onValueChange={(value) => {
+            if (isTabKey(String(value))) changeTab(value as TabKey);
+          }}
+          className="mt-6"
+        >
           <TabsList
             variant="line"
             className="w-full justify-start gap-4 rounded-none border-b p-0"
