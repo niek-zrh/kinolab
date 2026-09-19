@@ -21,3 +21,10 @@ next-env.d.ts
 # test artifacts
 test-results/
 playwright-report/
+# both-theme screenshot pass (scripts/screenshot-themes.mjs, e2e/tests/theme.spec.ts T7)
+e2e/screenshots/
+
+# operator artifacts that must never be committed (README §Backups and restore)
+backups/
+pilot-env-*.env
+kinolab-env-*.env

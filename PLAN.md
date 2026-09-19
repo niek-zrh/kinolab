@@ -78,6 +78,47 @@ and independently re-confirmed. 8 blockers found, all fixed and re-verified.
 - [ ] Google Drive live end-to-end — still blocked on the GCP OAuth client
       (README §Google setup); do not enable for the pilot until exercised
 
+## M7 — v2 tester round (v1.1.0-pilot.2) — in progress, 2026-09-19
+Brief: `docs/SPEC-v2.md`, written from the first tester round
+(First_Round.md, Heroes.png) and adopted by the lead engineer that evening.
+Built and tested against the local anonymous deployment only; the pilot
+backend is untouched until the gate passes. Decisions in DECISIONS.md
+(2026-09-19 entries). MUST list:
+- [x] Foundation: schema (`elements`, `shots.elementId/slot/formerCodes`,
+      `scenes.by_production_code`, `versions.by_production`), domain helpers
+      (element kinds/slots/codes, shot-code pattern generator), `lib/csv.ts`,
+      `shots.createShotRow` single insert path, CONTRACTS + DECISIONS
+      updated, version 1.1.0-pilot.2
+- [ ] a1 Dark by default + Appearance control (Settings visible to every
+      role, avatar menu) + status-token contrast pass + both-theme
+      screenshot walk of every route
+- [ ] b1 Characters under Pre-production: `elements.ts`, one slot shot per
+      phase (Concept + Animation — lead decision), list + detail pages,
+      slot rows excluded from Shots/Board/counts/search, shot-page redirect
+- [ ] c1 Generation details editable after upload (Options tab + Review Room
+      rail), `versions.updateMeta` caps
+- [ ] c2 Provenance CSV export (`exports.provenanceRows`, verbatim cells,
+      BOM, paginated, `export.generated`)
+- [ ] d1 New shots › Generate tab (scene-first, count/start/step/pattern) +
+      `shots.importRows`; scene codes unique per production
+- [ ] d2 New shots › Import tab from pasted text (TSV/CSV) with preview and
+      per-row validation
+- [ ] e1 Shot code rename (`shots.rename` + `formerCodes`), scene/episode
+      selects on the shot header, Edit scene sheet (`scenes.update.code`),
+      external links editable by `content.edit`
+- [ ] f1 Board card menu (status / assignee / due), `?tab=` deep links,
+      column-title links, cover thumbnails, 1,000-shot cap banner
+- [ ] g1 Copy clarity for shortlist / pick — one-pick invariant unchanged
+      (2.5b stays open, see DECISIONS "Open questions")
+- [ ] Seed: the five Heroes characters with their prompts (local demo only)
+- [ ] README: Appearance, Characters (Heroes-sheet mapping), New shots,
+      Provenance export (verbatim-cells warning), demo script steps 3–4
+- [ ] Gate: `pnpm typecheck && pnpm build && pnpm test:api && pnpm test:e2e`
+      green locally + both-theme screenshot pass signed off in the PR; then
+      tag v1.1.0-pilot.2
+SHOULD / LATER items are ranked in docs/SPEC-v2.md §1 and stay parked unless
+the lead engineer's decisions list says otherwise.
+
 ## Post-pilot backlog
 See DECISIONS.md parking lot (resource planning first, Telegram fan-out,
 video preview pipeline).

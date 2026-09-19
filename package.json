@@ -1,6 +1,6 @@
 {
   "name": "kinolab",
-  "version": "1.0.0-pilot.1",
+  "version": "1.1.0-pilot.2",
   "private": true,
   "scripts": {
     "dev": "concurrently -k -n convex,next -c blue,green \"convex dev\" \"next dev\"",

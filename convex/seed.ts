@@ -9,6 +9,9 @@ import type { Id } from "./_generated/dataModel";
 import { formatInTimeZone } from "date-fns-tz";
 import { DEFAULT_TEMPLATE } from "./qc";
 import { role as roleValidator } from "./schema";
+import { insertElementWithSlots } from "./elements";
+import { slotShotCode } from "./lib/domain";
+import type { ElementSlot } from "./lib/domain";
 
 /**
  * Idempotent demo seed (spec §12): studio Aurora North, production SIGNAL
@@ -136,6 +139,63 @@ const SCENES = [
   { code: "SC130", ep: 2, title: "Broadcast tower", figma: false },
 ];
 
+/**
+ * The tester's "Heroes" sheet (Heroes.png, v2 item b): one row per
+ * character, a Concept and an Animation phase, the generation prompt as the
+ * character's base prompt. Local demo only — the pilot backend is never
+ * seeded. Placeholder options follow the sheet's colour flags loosely: most
+ * concepts have a picked still ("Final"), Papa Tupik's animation is the one
+ * green (done) cell.
+ */
+type HeroSpec = {
+  name: string;
+  code: string;
+  description: string;
+  basePrompt: string;
+  slots: Record<ElementSlot, { versions: number; picked?: number }>;
+};
+
+const HERO_STYLE =
+  "Ultra-detailed 3D rendering, gentle soft shadows, high-quality textures, warm and expressive, realistic detailing, volumetric lighting, dynamic composition.";
+
+const HEROES: HeroSpec[] = [
+  {
+    name: "Pushistik",
+    code: "PUSHISTIK",
+    description: "Baby mammoth — the hero. Curious and clumsy, never far from Mama.",
+    basePrompt: `Cartoon still. Baby mammoth standing on the ice. Baby mammoth is cute, messy fluffy wool all over his body and head, wooly trunk, small tusks, expressive deep blue eyes. ${HERO_STYLE}`,
+    slots: { concept: { versions: 3, picked: 2 }, animation: { versions: 0 } },
+  },
+  {
+    name: "Mama",
+    code: "MAMA",
+    description: "Mama mammoth. Huge, patient, a red flower behind her ear.",
+    basePrompt: `Cartoon still. Mama mammoth standing on the ice. Mama mammoth is huge, with long messy wool, wooly trunk, big tusks, deep blue eyes, with a red flower behind her ear. ${HERO_STYLE}`,
+    slots: { concept: { versions: 2, picked: 1 }, animation: { versions: 0 } },
+  },
+  {
+    name: "Tupik",
+    code: "TUPIK",
+    description: "Young rapper puffin. Loud, quick, all attitude.",
+    basePrompt: `Cartoon character of a cute, expressive young rapper puffin standing. The puffin has black wings and back, a white belly and face, and a bright orange-yellow beak. It has large, friendly brown eyes full of personality. ${HERO_STYLE}`,
+    slots: { concept: { versions: 2 }, animation: { versions: 0 } },
+  },
+  {
+    name: "Morzh",
+    code: "MORZH",
+    description: "Old walrus on the iceberg. Wise and kind.",
+    basePrompt: `Cartoon still. Old walrus on an iceberg. Walrus is old, with small brown eyes and long flippers instead of front paws. Wise and kind. ${HERO_STYLE}`,
+    slots: { concept: { versions: 1 }, animation: { versions: 0 } },
+  },
+  {
+    name: "Papa Tupik",
+    code: "PAPA_TUPIK",
+    description: "Tupik's father. A grown puffin in a knitted scarf, tired eyes, warm heart.",
+    basePrompt: `Cartoon still. Grown-up puffin with a knitted scarf around his neck, standing on the ice. Black wings and back, white face, bright orange-yellow beak, kind tired eyes. ${HERO_STYLE} Reference: https://s.mj.run/1Pc_XO2PTCA`,
+    slots: { concept: { versions: 2, picked: 2 }, animation: { versions: 1, picked: 1 } },
+  },
+];
+
 /** Dev/QA helper: add an extra pending invite to Aurora North. */
 export const addQaInvite = internalMutation({
   args: { email: v.string(), role: roleValidator },
@@ -189,8 +249,21 @@ export const run = internalAction({
         thumbs.push({ key: `${shot.code}_v${i}`, storageId, bytes: svg.length });
       }
     }
+    // Character slot options (v2 item b), keyed by the slot shot's code.
+    for (const hero of HEROES) {
+      for (const slot of Object.keys(hero.slots) as ElementSlot[]) {
+        const code = slotShotCode("character", hero.code, slot);
+        for (let i = 1; i <= hero.slots[slot].versions; i++) {
+          const svg = placeholderSvg(code, i);
+          const storageId = await ctx.storage.store(
+            new Blob([svg], { type: "image/svg+xml" }),
+          );
+          thumbs.push({ key: `${code}_v${i}`, storageId, bytes: svg.length });
+        }
+      }
+    }
     await ctx.runMutation(internal.seed.insertAll, { thumbs });
-    return "Seeded studio 'Aurora North' with production 'SIGNAL LOST' (SGL). Sign up with niek.tenhove@gmail.com (owner), director@demo.slate (creative director), producer@demo.slate or artist@demo.slate — any password — to claim a role.";
+    return "Seeded studio 'Aurora North' with production 'SIGNAL LOST' (SGL): 14 shots and the 5 Heroes characters. Sign up with niek.tenhove@gmail.com (owner), director@demo.slate (creative director), producer@demo.slate or artist@demo.slate — any password — to claim a role.";
   },
 });
 
@@ -473,6 +546,120 @@ export const insertAll = internalMutation({
           type: "shot.status_changed", targetType: "shot", targetId: shotId,
           summary: `${name(spec.assignee ?? "jonas")} moved ${spec.code} to ${spec.status.replace("_", " ")}`,
         });
+    }
+
+    // Characters (v2 item b) — the Heroes sheet, through the same insert
+    // path as elements.create so every character owns its Concept and
+    // Animation slot shots (created by Mara, the creative director).
+    let elementOrder = 0;
+    for (const hero of HEROES) {
+      elementOrder += 1;
+      const { elementId, slots } = await insertElementWithSlots(ctx, {
+        productionId,
+        studioId,
+        kind: "character",
+        name: hero.name,
+        code: hero.code,
+        description: hero.description,
+        basePrompt: hero.basePrompt,
+        order: elementOrder,
+        createdBy: u("mara"),
+        firstShotOrder: shotOrder + 1,
+      });
+      shotOrder += slots.length;
+      activity.push({
+        actor: "mara", type: "element.created", targetType: "element", targetId: elementId,
+        summary: `Mara created character ${hero.name}`,
+      });
+      for (const { slot, shotId, code } of slots) {
+        const spec = hero.slots[slot];
+        if (spec.versions === 0) continue;
+        let coverAssetId: Id<"assets"> | undefined;
+        let pickedVersionId: Id<"versions"> | undefined;
+        for (let i = 1; i <= spec.versions; i++) {
+          const t = thumb.get(`${code}_v${i}`)!;
+          const isPicked = spec.picked === i;
+          const isSuperseded = spec.picked !== undefined && !isPicked;
+          const assetId = await ctx.db.insert("assets", {
+            productionId,
+            shotId,
+            provider: "storage",
+            kind: "file",
+            name: `SGL_${code}_v${i}.svg`,
+            mimeType: "image/svg+xml",
+            sizeBytes: t.bytes,
+            storageId: t.storageId,
+            thumbStorageId: t.storageId,
+            uploadedBy: u("dara"),
+          });
+          const versionId = await ctx.db.insert("versions", {
+            shotId,
+            productionId,
+            index: i,
+            status: isPicked ? "picked" : isSuperseded ? "rejected" : "candidate",
+            primaryAssetId: assetId,
+            createdBy: u("dara"),
+            promptMeta: {
+              tool: "Midjourney",
+              model: "v6.1",
+              prompt: `${hero.basePrompt} --ar 1:1 --v ${i}`,
+              seed: String(100000000 + (hash(`${code}${i}`) % 899999999)),
+            },
+            ...(isPicked
+              ? {
+                  decidedBy: u("mara"),
+                  decidedAt: now - 5 * 3600_000,
+                  decisionNote: "This is the look — silhouette reads at any size.",
+                }
+              : {}),
+            ...(isSuperseded
+              ? {
+                  decidedBy: u("mara"),
+                  decidedAt: now - 5 * 3600_000,
+                  decisionNote: `superseded by v${spec.picked}`,
+                }
+              : {}),
+          });
+          await ctx.db.patch(assetId, { versionId });
+          if (i === 1) coverAssetId = assetId;
+          if (isPicked) pickedVersionId = versionId;
+          activity.push({
+            actor: "dara", type: "version.added", targetType: "version", targetId: versionId,
+            summary: `Dara added v${i} to ${code}`,
+          });
+          if (isSuperseded)
+            activity.push({
+              actor: "mara", type: "version.rejected", targetType: "version", targetId: versionId,
+              summary: `Mara rejected ${code} v${i} — superseded by v${spec.picked}`,
+            });
+          if (isPicked) {
+            activity.push({
+              actor: "mara", type: "version.picked", targetType: "version", targetId: versionId,
+              summary: `Mara picked v${i} for ${code} — “This is the look — silhouette reads at any size.”`,
+            });
+            await ctx.db.insert("approvals", {
+              productionId,
+              scope: "version",
+              targetId: versionId,
+              requestedBy: u("mara"),
+              approverId: u("mara"),
+              status: "approved",
+              decidedAt: now - 5 * 3600_000,
+              note: "This is the look — silhouette reads at any size.",
+            });
+          }
+        }
+        await ctx.db.patch(shotId, {
+          versionsCount: spec.versions,
+          status: pickedVersionId !== undefined ? "picked" : "options_ready",
+          ...(coverAssetId ? { coverAssetId } : {}),
+          ...(pickedVersionId ? { pickedVersionId } : {}),
+        });
+        activity.push({
+          actor: "dara", type: "shot.status_changed", targetType: "shot", targetId: shotId,
+          summary: `Dara moved ${code} to options ready`,
+        });
+      }
     }
 
     // Gate approvals for decided gates + pending for Mara --------------------

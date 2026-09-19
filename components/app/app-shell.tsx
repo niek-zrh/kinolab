@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AppearanceMenuItems } from "./appearance-control";
 import { CommandPalette } from "./command-palette";
 import { CreateStudio } from "./create-studio";
 import { KeyboardOverlay } from "./keyboard-overlay";
@@ -123,6 +124,10 @@ function Shell({ children }: { children: ReactNode }) {
                   </div>
                 </DropdownMenuLabel>
               </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              {/* Dark | Light | System — same next-themes state as Settings ›
+                  Appearance (components/app/appearance-control.tsx). */}
+              <AppearanceMenuItems />
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() =>

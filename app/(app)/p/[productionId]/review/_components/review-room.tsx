@@ -23,6 +23,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/app/status-pill";
 import { useStudio } from "@/components/app/studio-context";
+import { useForcedDark } from "@/components/app/theme-provider";
 import { useHotkeys } from "@/lib/hooks/use-hotkeys";
 import { cn } from "@/lib/utils";
 import {
@@ -53,6 +54,11 @@ export function ReviewRoom({
 }) {
   const router = useRouter();
   const { role } = useStudio();
+  // The room is dark whatever the Appearance preference says (spec §9: colour
+  // judgement on a neutral surround). Holding the document — not just this
+  // tree — keeps the portalled dialogs, menus and toasts dark too. Released on
+  // unmount, so leaving the room returns to the chosen theme.
+  useForcedDark();
   const shot = useQuery(api.shots.get, { shotId });
   const versions = useQuery(api.versions.listForShot, { shotId });
   const shortlistVersion = useMutation(api.versions.shortlist);
@@ -230,6 +236,9 @@ export function ReviewRoom({
   const loading = shot === undefined || versions === undefined;
 
   return (
+    // `dark` stays on the container as well: the document hold above lands in
+    // an effect, so this keeps the room's own first frame dark when the person
+    // arrives from a light theme.
     <div className="dark">
       <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
         {/* Top bar */}
@@ -432,7 +441,8 @@ function RoomHints({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="dark bg-popover text-popover-foreground">
+      {/* Portalled: dark via the document hold in ReviewRoom, no class needed. */}
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-display">Review Room keys</DialogTitle>
         </DialogHeader>

@@ -29,6 +29,10 @@ function validHttpUrl(raw: string): string {
 
 // Note: no activity rows in this module — links are production config, not
 // state (documented exception in CONTRACTS.md).
+//
+// Permissions (v2 item e): add / update / remove need `content.edit` — was
+// `production.manage`. A Creative Director or supervisor can fix a wrong
+// storyboard link; artists and viewers read them (list is member-wide).
 
 export const list = query({
   args: { productionId: v.id("productions") },
@@ -51,7 +55,7 @@ export const add = mutation({
     url: v.string(),
   },
   handler: async (ctx, args) => {
-    await assertCanForProduction(ctx, args.productionId, "production.manage");
+    await assertCanForProduction(ctx, args.productionId, "content.edit");
     const title = args.title.trim();
     if (title.length === 0) throw new ConvexError("Give the link a title");
     const url = validHttpUrl(args.url);
@@ -73,7 +77,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const link = await ctx.db.get(args.linkId);
     if (!link) throw new ConvexError("Link not found");
-    await assertCanForProduction(ctx, link.productionId, "production.manage");
+    await assertCanForProduction(ctx, link.productionId, "content.edit");
 
     let title: string | undefined;
     if (args.title !== undefined) {
@@ -94,7 +98,7 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const link = await ctx.db.get(args.linkId);
     if (!link) return; // already gone
-    await assertCanForProduction(ctx, link.productionId, "production.manage");
+    await assertCanForProduction(ctx, link.productionId, "content.edit");
     await ctx.db.delete(args.linkId);
   },
 });

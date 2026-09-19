@@ -595,6 +595,29 @@ export const pick = mutation({
   },
 });
 
+/**
+ * Generation-details caps (v2 item c). Prompts are pasted from the tool and
+ * can run long; params is a free-form JSON string; the rest are one-liners.
+ */
+const MAX_PROMPT_LENGTH = 20_000;
+const MAX_PARAMS_LENGTH = 20_000;
+const MAX_META_FIELD_LENGTH = 200; // tool / model / seed
+const MAX_NOTE_LENGTH = 2_000;
+
+const META_FIELD_LABELS: Record<keyof PromptMeta, string> = {
+  tool: "tool",
+  model: "model",
+  prompt: "prompt",
+  seed: "seed",
+  params: "params",
+};
+
+/**
+ * Edit "Generation details" after upload (the Options tab card and the Review
+ * Room rail). Creator or `content.edit` — an artist edits only their own
+ * uploads, a viewer never. Caps: prompt / params ≤ 20,000, tool / model / seed
+ * ≤ 200, note ≤ 2,000. The activity summary names the fields that changed.
+ */
 export const updateMeta = mutation({
   args: {
     versionId: v.id("versions"),
@@ -619,6 +642,39 @@ export const updateMeta = mutation({
       );
     }
     if (args.promptMeta === undefined && args.note === undefined) return null;
+    if (args.promptMeta !== undefined) {
+      const meta = args.promptMeta;
+      if (meta.prompt !== undefined && meta.prompt.length > MAX_PROMPT_LENGTH)
+        throw new ConvexError(
+          `Prompt is too long — keep it to ${MAX_PROMPT_LENGTH.toLocaleString("en-US")} characters`,
+        );
+      if (meta.params !== undefined && meta.params.length > MAX_PARAMS_LENGTH)
+        throw new ConvexError(
+          `Params are too long — keep them to ${MAX_PARAMS_LENGTH.toLocaleString("en-US")} characters`,
+        );
+      for (const key of ["tool", "model", "seed"] as const) {
+        const value = meta[key];
+        if (value !== undefined && value.length > MAX_META_FIELD_LENGTH)
+          throw new ConvexError(
+            `${key[0].toUpperCase()}${key.slice(1)} is too long — keep it to ${MAX_META_FIELD_LENGTH} characters`,
+          );
+      }
+    }
+    if (args.note !== undefined && args.note.length > MAX_NOTE_LENGTH)
+      throw new ConvexError(
+        `Note is too long — keep it to ${MAX_NOTE_LENGTH.toLocaleString("en-US")} characters`,
+      );
+
+    const changed: string[] = [];
+    if (args.promptMeta !== undefined) {
+      const before = version.promptMeta ?? {};
+      for (const key of Object.keys(META_FIELD_LABELS) as (keyof PromptMeta)[]) {
+        if ((args.promptMeta[key] ?? "") !== (before[key] ?? ""))
+          changed.push(META_FIELD_LABELS[key]);
+      }
+    }
+    if (args.note !== undefined && args.note !== (version.note ?? ""))
+      changed.push("note");
     await ctx.db.patch(version._id, {
       ...(args.promptMeta !== undefined
         ? { promptMeta: args.promptMeta }
@@ -632,7 +688,10 @@ export const updateMeta = mutation({
       type: "version.updated",
       targetType: "version",
       targetId: version._id,
-      summary: `${name} updated details on v${version.index} of ${shot.code}`,
+      summary:
+        `${name} updated details on v${version.index} of ${shot.code}` +
+        (changed.length > 0 ? ` (${changed.join(", ")})` : ""),
+      data: changed.length > 0 ? { changed } : undefined,
     });
     return null;
   },

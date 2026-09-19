@@ -111,7 +111,12 @@ export const global = query({
           q.eq("productionId", production._id),
         )) {
         shotsScanned++;
-        if (matches(shot.code) || matches(shot.title)) {
+        // v2 item b: element slot shots are characters, not shots (a SHOULD
+        // `characters` group would list them by element name / code).
+        if (
+          shot.elementId === undefined &&
+          (matches(shot.code) || matches(shot.title))
+        ) {
           shots.push({
             _id: shot._id,
             code: shot.code,

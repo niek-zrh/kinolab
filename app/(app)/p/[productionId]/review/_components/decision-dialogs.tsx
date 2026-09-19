@@ -83,7 +83,8 @@ export function PickDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="dark bg-popover text-popover-foreground">
+      {/* Portalled: dark via the document hold in ReviewRoom, no class needed. */}
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-display">
             Pick <span className="font-mono">v{version.index}</span> for{" "}
@@ -183,7 +184,8 @@ export function RejectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="dark bg-popover text-popover-foreground">
+      {/* Portalled: dark via the document hold in ReviewRoom, no class needed. */}
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-display">
             Reject <span className="font-mono">v{version.index}</span>

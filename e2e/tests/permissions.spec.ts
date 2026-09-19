@@ -232,7 +232,9 @@ test.describe.serial("permissions", () => {
     await inviteMemberLocal(ownerPage, viewerEmail, "Viewer");
   });
 
-  test("artist joins; production rail has no Settings tab", async () => {
+  // Settings is visible to every role since v1.1 (the Appearance card is
+  // personal); the manager-only cards gate themselves — see the next test.
+  test("artist joins; production rail shows Settings for every role", async () => {
     ({ context: artistContext, page: artistPage } = await signUpInvitedRobust(
       sharedBrowser,
       artistEmail,
@@ -247,7 +249,7 @@ test.describe.serial("permissions", () => {
     const rail = artistPage.locator("aside");
     await expect(rail.getByRole("link", { name: "Shots" })).toBeVisible();
     await expect(rail.getByRole("link", { name: "Board" })).toBeVisible();
-    await expect(rail.getByRole("link", { name: "Settings" })).toHaveCount(0);
+    await expect(rail.getByRole("link", { name: "Settings" })).toBeVisible();
   });
 
   test("artist gets a read-only /settings page via direct URL", async () => {

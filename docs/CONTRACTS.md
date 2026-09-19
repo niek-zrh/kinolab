@@ -20,18 +20,41 @@ Shared rules for every module (non-negotiable):
    canDecideGate, canDecideForShot, canEditShot, requireUserId),
    `activity.ts` (logActivity, actorName), `notify.ts` (notify, notifyMany),
    `domain.ts` (STAGES, SHOT_STATUSES, WORKING_STATUSES, canonicalApprovedName,
-   HUB_FOLDERS).
+   HUB_FOLDERS; v2: ELEMENT_KINDS, SLOTS_BY_KIND, ELEMENT_CODE_PREFIX,
+   RESERVED_CODE_PREFIXES, isReservedCode, deriveElementCode,
+   isValidElementCode, slotShotCode, slotTitle, ELEMENT_SLOT_STAGE, the
+   MAX_ELEMENT_* / MAX_LIST_ELEMENTS / MAX_BULK_ELEMENTS caps,
+   DEFAULT_SHOT_PATTERN, expandShotPattern, generateShotCodes,
+   patternHasNumberToken, episodeToken). Shot rows are inserted ONLY through
+   `createShotRow` exported from `convex/shots.ts` (see §shots.ts) — never a
+   second `ctx.db.insert("shots", …)`.
 5. Timestamps: `Date.now()`. Dates as `"YYYY-MM-DD"` strings in the
    production's timezone (`formatInTimeZone` from `date-fns-tz`).
 6. Activity `type` values are dot-namespaced and FIXED (reports count on
-   them): `production.created`, `shot.created`, `shot.status_changed`,
-   `shot.stage_changed`, `shot.updated`, `version.added`, `version.shortlisted`,
-   `version.rejected`, `version.picked`, `gate.requested`, `gate.approved`,
-   `gate.rejected`, `comment.added`, `report.published`, `qc.run_started`,
-   `qc.run_passed`, `qc.run_failed`, `drive.hub_created`, `drive.synced`.
+   them): `production.created`, `production.updated`, `stage.status_changed`,
+   `scene.created`, `scene.updated`, `scene.removed`, `shot.created`,
+   `shot.status_changed`, `shot.stage_changed`, `shot.updated`,
+   `shot.renamed`, `shot.removed`, `version.added`, `version.updated`,
+   `version.shortlisted`, `version.rejected`, `version.unrejected`,
+   `version.picked`, `version.moved` (SHOULD, with `versions.moveToShot`),
+   `element.created`, `element.updated`, `element.removed`, `gate.requested`,
+   `gate.approved`, `gate.rejected`, `comment.added`, `comment.resolved`,
+   `asset.added`, `export.generated`, `report.published`, `qc.run_started`,
+   `qc.run_passed`, `qc.run_failed`, `drive.hub_created`, `drive.synced`,
+   `drive.approved_filed`, `drive.hub_owner_mismatch`.
+   The daily report counts ONLY `version.added`, `version.picked`,
+   `version.rejected`, `shot.status_changed` + `shot.stage_changed`,
+   `comment.added`, `gate.approved` + `gate.rejected` — element slot work
+   flows through those same types (a slot shot is a shot), so character
+   options/picks land in the existing tiles; renames, edits and exports show
+   in the day-activity list only.
 7. Notification `type` values: `mention`, `approval_requested`,
    `gate_decided`, `version_picked`, `report_published`, `shot_assigned`.
-   `href` is an app path like `/p/{productionId}/shots/{shotId}`.
+   `href` is an app path like `/p/{productionId}/shots/{shotId}`. For an
+   element slot shot (v2, `shot.elementId` set) the href stays
+   `/p/{pid}/shots/{slotShotId}` — the shot page redirects to
+   `/p/{pid}/characters/{elementId}?slot={slot}`, so notifications, ledger
+   rows and history links never need to know about elements.
 
 Enriched user shape used across returns:
 `{ _id: Id<"users">, name: string, image?: string }` — call it `UserRef`.
@@ -47,7 +70,7 @@ Build with a local helper; `name` falls back to email then "Unknown".
   `open`, `gateApproverIds: []`), episodes 1..episodeCount when episodic,
   timezone default "Europe/Zurich", status "active". Activity `production.created`.
 - `listForStudio` (query): `{ studioId }` → productions with
-  `{ ...production, shotCounts: { total: number, byStatus: Record<string, number> }, hubConnected: boolean }`. Never include `hub.connectionId` semantics beyond presence; folderIds are fine.
+  `{ ...production, shotCounts: { total: number, byStatus: Record<string, number> }, hubConnected: boolean }`. Never include `hub.connectionId` semantics beyond presence; folderIds are fine. v2: `shotCounts` skip element slot shots (`elementId` set) — characters are not shots.
 - `get` (query): `{ productionId }` → `{ ...production, hubConnected: boolean, episodes: Doc<"episodes">[] }`.
 - `update` (mutation): `{ productionId, name?, status?: "active"|"paused"|"wrapped", timezone? }`. Perm `production.manage`. Activity `shot.updated`-style summary under type `production.created`? No — use type `shot.updated`? No. Use `production.created`? No. **Use activity type `production.updated`** (add to the fixed list). 
 - `listStages` (query): `{ productionId }` → stageInstances ordered by STAGES
@@ -65,17 +88,17 @@ Build with a local helper; `name` falls back to email then "Unknown".
 
 ## externalLinks.ts
 
-- `list` (query): `{ productionId }` → links.
-- `add` (mutation): `{ productionId, kind: "figma"|"sheet"|"miro"|"telegram"|"other", title, url }` perm `production.manage`. Validate http(s) URL.
-- `update` (mutation): `{ linkId, title?, url? }` perm `production.manage`.
-- `remove` (mutation): `{ linkId }` perm `production.manage`.
-(no activity rows for links — config, documented exception)
+- `list` (query): `{ productionId }` → links. Every member (viewer included) reads them.
+- `add` (mutation): `{ productionId, kind: "figma"|"sheet"|"miro"|"telegram"|"other", title, url }` perm **`content.edit`** (v2 item e — was `production.manage`; a CD or supervisor can fix a wrong storyboard link; artist/viewer read only). Validate http(s) URL.
+- `update` (mutation): `{ linkId, title?, url? }` perm `content.edit`.
+- `remove` (mutation): `{ linkId }` perm `content.edit`.
+(no activity rows for links — config, documented exception; SHOULD `production.updated` "changed link Storyboard (Figma)")
 
 ## scenes.ts
 
 - `list` (query): `{ productionId, episodeId? }` → scenes ordered by `order`, each with `shotCount`.
-- `create` (mutation): `{ productionId, episodeId?, code, title?, figmaUrl?, description? }` perm `content.edit`. Order = max+1.
-- `update` (mutation): `{ sceneId, title?, figmaUrl?, description?, order?, episodeId? }` perm `content.edit`.
+- `create` (mutation): `{ productionId, episodeId?, code, title?, figmaUrl?, description? }` perm `content.edit`. Order = max+1. **Scene codes are unique per production** (v2 item d): trimmed, uppercased, checked with one lookup on `scenes.by_production_code`; a duplicate is refused ("Scene code SC010 already exists in this production"). Nothing enforced this before — on restored old data with duplicates, readers that match by code take the first by `order` and log a warning.
+- `update` (mutation): `{ sceneId, code?, title?, figmaUrl?, description?, order?, episodeId? }` perm `content.edit`. `code` (v2 item e): same normalisation + uniqueness as `create`; a scene code change does NOT rename the scene's shot codes (the sheet says so explicitly; SHOULD: opt-in cascade with preview). Activity `scene.updated` with the change list, e.g. "updated scene SC010 (code → SC015, title …)".
 - `remove` (mutation): `{ sceneId }` perm `content.edit`; only when no shots reference it.
 
 ## shots.ts
@@ -84,15 +107,22 @@ Enriched shot shape `ShotCard`:
 `{ ...shot, assignee: UserRef | null, scene: { _id, code, title? } | null, episode: { _id, number } | null, versionsCount: number, coverThumbUrl: string | null }`
 (coverThumbUrl: coverAssetId → asset.thumbStorageId → `ctx.storage.getUrl`; else null)
 
-- `list` (query): `{ productionId, status?, stage?, sceneId?, assigneeId?, episodeId? }` → `ShotCard[]` ordered by `order`. All filters optional & combinable, applied while streaming the index (never a full `.collect()` — a production past ~4k shots used to blow Convex's 4,096-document read limit and take the Shots page, Board and Overview down with it). Caps at `MAX_LIST_SHOTS` (1000); the Shots page says so when it hits the cap. `versionsCount` is read from the denormalised field on the shot, never by counting versions.
-- `get` (query): `{ shotId }` → `ShotCard & { production: { _id, name, code, timezone }, pickedVersionIndex: number | null, driveFolderId?: string }`.
-- `create` (mutation): `{ productionId, code, title?, sceneId?, episodeId?, stage?, assigneeId?, dueDate? }` perm `content.edit`. Unique code per production. Default stage "production", status "planned", order max+1. Activity `shot.created`.
-- `bulkCreate` (mutation): `{ productionId, codes: string[], sceneId?, episodeId? }` → `{ created: number, skipped: string[] }`. Perm `content.edit`. Trims, uppercases, dedupes, skips existing. ONE activity row ("Niek created 12 shots"). Max 500 codes per call, code ≤ 64 chars, title ≤ 200 — an uncapped paste used to be unrecoverable because nothing could be deleted.
-- `remove` (mutation): `{ shotId }` perm `content.edit`; refuses when the shot has versions or a pick (mirrors `scenes.remove`). Deletes the shot's dangling comments/assets, never its activity rows (reports count on them). ONE activity row.
+v2 fields on `shot`: `elementId?: Id<"elements">` + `slot?: string` — set together on an element **slot shot** (see §elements.ts), never on an ordinary shot; `formerCodes?: string[]` — rename trail, oldest first (the heading shows "formerly {last}").
+
+Reserved codes: an ordinary shot code may not start with `CH_`, `LOC_` or `SCR_` (`isReservedCode` / `RESERVED_CODE_PREFIXES` in lib/domain.ts). `create`, `bulkCreate` and `importRows` refuse it ("CH_ codes are reserved for characters — create it under Characters"); slot shots are the only rows with such codes.
+
+- `createShotRow(ctx: MutationCtx, args)` — exported **helper, not a Convex function**: the single insert path for `create`, `importRows` and `elements.create` / `elements.bulkCreate`. `args: { productionId, studioId, code, title?, sceneId?, episodeId?, stage?, assigneeId?, dueDate?, elementId?, slot?, order? }` → `{ shotId, code }` (code trimmed + uppercased). Applies the code (≤ 64) / title (≤ 200) caps, the reserved-prefix rule (skipped when `elementId` is set), the `elementId` ⇔ `slot` pairing, "no scene/episode on a slot shot", scene / episode / assignee / due-date validation, the `by_production_code` uniqueness lookup and `order` (`args.order` from batch callers that read `lastOrder` once and count up, else max+1). Status "planned", stage default "production" (`ELEMENT_SLOT_STAGE` = "preproduction" for slot shots), versionsCount 0. Writes NO activity row — the calling mutation logs its own (rule 1). `studioId` is the production's studio from `assertCanForProduction`, passed in so the assignee membership check costs no extra read.
+- `list` (query): `{ productionId, status?, stage?, sceneId?, assigneeId?, episodeId?, elements?: "exclude"|"only"|"all" }` → `ShotCard[]` ordered by `order`. All filters optional & combinable, applied while streaming the index (never a full `.collect()` — a production past ~4k shots used to blow Convex's 4,096-document read limit and take the Shots page, Board and Overview down with it). Caps at `MAX_LIST_SHOTS` (1000); the Shots page says so when it hits the cap. `versionsCount` is read from the denormalised field on the shot, never by counting versions. `elements` (v2): default `"exclude"` drops slot shots (`elementId` set) while streaming, so the Shots page, Board, Overview and every existing caller never see characters; `"only"` returns just slot shots (Review queue "Characters" group); `"all"` both. The cap counts returned rows.
+- `get` (query): `{ shotId }` → `ShotCard & { production: { _id, name, code, timezone }, pickedVersionIndex: number | null, driveFolderId?: string }` (`elementId` / `slot` / `formerCodes` come through on the shot when set; the shot page redirects a slot shot to `/p/{pid}/characters/{elementId}?slot={slot}`).
+- `create` (mutation): `{ productionId, code, title?, sceneId?, episodeId?, stage?, assigneeId?, dueDate? }` perm `content.edit`. Calls `createShotRow`: unique code per production, default stage "production", status "planned", order max+1, reserved prefixes refused. Activity `shot.created`.
+- `importRows` (mutation, v2 item d — THE batch path): `{ productionId, rows: { code, title?, sceneCode?, episodeNumber?, assigneeId?, dueDate? }[] (≤ 500), defaults?: { sceneId?, episodeId?, stage?, assigneeId?, dueDate? }, scenesToCreate?: { code, title?, episodeId? }[] (≤ 100), createMissingScenes: boolean }` → `{ created: number, skipped: string[], invalid: { code: string, reason: string }[], scenesCreated: string[], sceneId?: Id<"scenes"> }` (`sceneId` set when exactly one scene is involved, for the `/shots?scene=` redirect). Perm `content.edit`. Trims, uppercases, dedupes (a duplicate inside the paste → `skipped`); codes already in the production → `skipped`, never an error; per-row problems (reserved prefix, > 64 chars, chars outside A–Z 0–9 _ -, title > 200, unknown episode / assignee, bad date) → `invalid`; a row's `sceneCode` is matched on `scenes.by_production_code` (an existing scene under another episode is used as is), created when `createMissingScenes`, else `invalid`; rows without `sceneCode` take `defaults`. Structural errors throw (> 500 rows, > 100 scenes, bad production). Reads `lastOrder` once and counts up through `createShotRow`. ONE activity row `shot.created` ("Anna created scene SC010 and 10 shots" / "Anna created 42 shots", `data: { skipped, invalid, scenesCreated }`), one aggregated `shot_assigned` notification per assignee. Two concurrent imports of the same codes: the second reports them skipped.
+- `bulkCreate` (mutation) — **DEPRECATED** in v2, kept one release as an alias of `importRows` for callers still passing `{ productionId, codes: string[], sceneId?, episodeId? }` → `{ created: number, skipped: string[] }`; removed after v1.1. Same caps (500 codes, code ≤ 64) and the reserved-prefix rule; ONE activity row.
+- `rename` (mutation, v2 item e): `{ shotId, code }` perm `content.edit` — never the assigned artist. New code normalised (trim, uppercase, ≤ 64) and unique per production (`by_production_code`); refused on element slot shots ("rename the character instead"), on `delivered` shots, and on reserved prefixes; a no-op when unchanged. Patches `code` and appends the old code to `formerCodes`. Activity `shot.renamed` ("Anna renamed SC010_SH020 → SC010_SH025", `data: { from, to }`). No notification. Drive folders and already-filed Approved files are NOT renamed (Drive dormant; rename job parked); the ledger targetLabel, search and the Review Room header read the live code; future picks use the new canonical name.
+- `remove` (mutation): `{ shotId }` perm `content.edit`; refuses when the shot has versions or a pick (mirrors `scenes.remove`). Deletes the shot's dangling comments/assets, never its activity rows (reports count on them). ONE activity row. `elements.remove` deletes slot shots through the same rules.
 - `bulkRemove` (mutation): `{ shotIds: Id<"shots">[] }` (max 500) — same per-shot safety rule, so a mis-paste can actually be undone.
-- `update` (mutation): `{ shotId, title?, sceneId?, assigneeId?, dueDate?, order?, episodeId? }`. Permission `canEditShot`. Activity `shot.updated` (summarize what changed). If assignee changed → notify new assignee (`shot_assigned`).
-- `setStatus` (mutation): `{ shotId, status }`. Permission `canEditShot(member, shot, userId, status)`. Invariants (spec §6): → `approved` requires `pickedVersionId`; → `delivered` requires the production's delivery stageInstance gateStatus !== "rejected". Activity `shot.status_changed` ("Anna moved SC010_SH020 to In review").
-- `setStage` (mutation): `{ shotId, stage }`. Perm `content.edit`. Activity `shot.stage_changed`.
+- `update` (mutation): `{ shotId, title?, sceneId?, assigneeId?, dueDate?, order?, episodeId? }`. Permission `canEditShot`. v2: refuses `sceneId` / `episodeId` on a slot shot ("Character slots don't belong to a scene"); choosing a scene sets `episodeId` from the scene (shot-header selects). SHOULD `elementIds?: Id<"elements">[]` (characters appearing in the shot; each must belong to the production). Activity `shot.updated` (summarize what changed, e.g. "scene → SC020"). If assignee changed → notify new assignee (`shot_assigned`).
+- `setStatus` (mutation): `{ shotId, status }`. Permission `canEditShot(member, shot, userId, status)`. Invariants (spec §6): → `approved` requires `pickedVersionId`; → `delivered` requires the production's delivery stageInstance gateStatus !== "rejected". Activity `shot.status_changed` ("Anna moved SC010_SH020 to In review"). Works on slot shots unchanged (the character page uses it).
+- `setStage` (mutation): `{ shotId, stage }`. Perm `content.edit`. Activity `shot.stage_changed`. Slot shots never reach the Board (excluded by `list`), so they stay in Pre-Production.
 
 ## versions.ts
 
@@ -121,7 +151,34 @@ Enriched `VersionCard`:
   Activity `version.picked` (include note in summary when present). Notify
   shot assignee + version creator (`version_picked`). If hub connected,
   schedule `internal.drive.copyPickToApproved({ versionId })` (try/catch guard).
-- `updateMeta` (mutation): `{ versionId, promptMeta?, note? }`. Creator or `content.edit`.
+- `updateMeta` (mutation): `{ versionId, promptMeta?: { tool?, model?, prompt?, seed?, params? }, note? }`. Creator or `content.edit` (artist: own uploads only; viewer never). v2 caps (ConvexError): `prompt` ≤ 20,000, `params` ≤ 20,000, `tool` / `model` / `seed` ≤ 200, `note` ≤ 2,000. The UI ("Generation details" dialog on the Options tab and in the Review Room rail) sends `params` too. Activity `version.updated` (summary names the fields changed). SHOULD: `promptMetaUpdatedAt`, `promptMetaUpdatedBy` on the version ("edited by X · 3 min ago").
+- SHOULD `moveToShot` (mutation): `{ versionId, shotId }` creator or `content.edit`; never a picked/rejected version; the target shot must be in the same production; new index = max+1 on the target; patches `asset.shotId`, `versionsCount` on both shots and `coverAssetId` fix-ups on both. Activity `version.moved`.
+
+## elements.ts (NEW, v2 item b)
+
+Pre-production elements — characters now; `kind` "location" / "script" are accepted by the schema and have no UI yet. Each element owns one **slot shot** per `SLOTS_BY_KIND[kind]` (character: `concept`, `animation`): a `shots` row with `elementId` + `slot`, code `slotShotCode(kind, code, slot)` = `CH_{CODE}_{SLOT}`, stage `preproduction`, status "planned", title `slotTitle(name, slot)` = "{name} — Concept", no scene/episode, inserted via `createShotRow`. Everything version-shaped (upload, Options, shortlist / reject / pick with the one-pick invariant, Review Room, comments, history, ledger, notifications, daily report) works on the slot shot unchanged.
+
+Enriched `ElementRow`:
+`{ ...element, slots: { slot: string, shotId: Id<"shots">, status: ShotStatusKey, versionsCount: number, pickedVersionIndex: number | null, coverThumbUrl: string | null, pickedThumbUrl: string | null, pickedFileUrl: string | null, latestPrompt: string | null }[] }`
+(`latestPrompt` = the picked version's `promptMeta.prompt`, else the latest version's, else null; slots in `SLOTS_BY_KIND` order)
+
+- `list` (query): `{ productionId, kind }` → `ElementRow[]` by `order`. Membership. Streams `elements.by_production`, filters `kind`, caps at `MAX_LIST_ELEMENTS` (300 — ≈5 reads per element stays under the 4,096 ceiling; separate from the 1000-shot cap).
+- `get` (query): `{ elementId }` → `ElementRow & { production: { _id, name, code, timezone } }`. Membership (cross-studio → PermissionError).
+- `create` (mutation): `{ productionId, kind, name (≤ 120), code? (A–Z0–9_, ≤ 32), description? (≤ 2000), basePrompt? (≤ 4000) }` → `Id<"elements">`. Perm `content.edit`. Code = the given one (validated with `isValidElementCode`) else `deriveElementCode(name)`; an empty derivation (Cyrillic-only name) → "Code is required — codes use A–Z, 0–9 and _". Unique per production + kind via `elements.by_production_kind_code` ("Character code PAPA already exists"); duplicate names allowed. order = max+1. Creates the element, then one slot shot per `SLOTS_BY_KIND[kind]` through `createShotRow` (`studioId` from the production, `elementId`, `slot`, `order` counted up from one `lastOrder` read). ONE activity row `element.created` ("Anna created character Pushistik"), targetType "element".
+- `bulkCreate` (mutation): `{ productionId, kind, names: string[] (≤ 200) }` → `{ created: number, skipped: string[] }`. Perm `content.edit`. Trims, drops blanks, derives codes; a code collision (inside the batch or in the table) gets `_2`, `_3`…; names with an empty derivation → `skipped`. ONE activity row `element.created` ("Anna created 5 characters").
+- `update` (mutation): `{ elementId, name?, code?, description?, basePrompt?, order? }` perm `content.edit`. Same caps and code rules. A `code` change renames EVERY slot shot's code in the same transaction (`slotShotCode` with the new code, uniqueness per slot on `shots.by_production_code`, the old code appended to that shot's `formerCodes`); a `name` change re-titles the slot shots (`slotTitle`). Activity `element.updated` with the change list ("updated character Pushistik (code → PUSHISTIK_JR, formerly CH_PUSHISTIK_CONCEPT; base prompt)").
+- `remove` (mutation): `{ elementId }` perm `content.edit`. Refused when any slot shot has versions ("This character has options — remove them first"); otherwise deletes the slot shots via the `shots.remove` rules (dangling comments/assets removed, activity rows kept), then the element. Activity `element.removed`.
+
+Permissions: create / update / remove / bulkCreate = `content.edit` (owner, producer, CD, supervisor). Artist: upload options to any slot (`version.create`), comment, change a slot's status / assignee / due only when assigned (`canEditShot`); never create, rename or delete. Decide (shortlist / reject / pick) = `canDecideForShot` on the slot shot (supervisor: when gate approver of Pre-Production, the slot's stage). Viewer: read + comment.
+
+Exclusions elsewhere: `shots.list` default `elements: "exclude"`; `productions.listForStudio` shot counts and `search.global` shots skip rows with `elementId` (SHOULD: search returns a `characters` group instead); the Board never shows slot rows; `shots.update` refuses scene / episode on them; `shots.rename` refuses them ("rename the character instead"). `drive.copyPickToApproved` is unchanged — known gap: with a hub connected, slot picks would file under Shots/ (parked, Drive dormant).
+
+## exports.ts (NEW, v2 item c)
+
+- `provenanceRows` (query): `{ productionId, cursor?: string | null, numItems?: number (≤ 400, default 400) }` → `{ rows: ProvenanceRow[], cursor: string | null, done: boolean }`. Perm `production.manage`. Paginates `versions.by_production` with `.order("desc")` (newest first) through Convex `.paginate`; one row per version across shots AND element slots, rejected / superseded included; per row ≤ 6 reads (version + shot + element + asset + creator + decider), so 400 rows per call stays under the read ceiling. Every value is a string. `ProvenanceRow` keys, in column order: `studio_name, production_code, production_name, target_type ("shot" | "character" | "location"), target_code, target_title, slot, scene_code, episode ("EP01" or ""), version ("3"), version_id, version_status (candidate | shortlisted | picked | rejected), created_at (ISO 8601 UTC), created_at_local (production tz "YYYY-MM-DD HH:mm"), created_by_name, created_by_email, tool, model, prompt, seed, params, note, file_name, file_mime, file_size_bytes, file_md5, file_provider (storage | gdrive | url | ""), file_location (Drive webViewLink | "app storage:{storageId}" | url), file_missing ("true" | "false"), approved_file_name (`canonicalApprovedName` when picked, e.g. SGL_EP01_SC010_SH020_v3.png), decision (picked | rejected | ""), decided_at (ISO), decided_by_name, decided_by_email, decision_note, details_last_edited_at, details_last_edited_by` — the last two from the newest `version.updated` activity row for the version (`activity.by_target`), else "". A version without an asset → every `file_*` "" and `file_missing` "true". Storage-provider rows expose only the Convex storageId (the S3 object key is invisible to app code — README note). An empty production → `rows: [], done: true` (header-only file).
+- `logProvenanceExport` (mutation): `{ productionId, rowCount: number }` perm `production.manage`. Activity `export.generated` ("Niek exported provenance (312 rows)"), targetType "production", `data: { rowCount }`. Called by the client once the download starts. No notification.
+
+Client side — `lib/csv.ts` (shared with the ledger export and the New shots › Import tab): `toCsv(rows, { verbatim: true })` quotes every cell and applies NO formula-lead guard (the file is evidence, not a spreadsheet), CRLF, `withBom`; filename `{CODE}_provenance_{YYYY-MM-DD}.csv`; progress toast while paginating. The ledger export keeps the guard (`toCsv` defaults). `parseDelimited(text)` is the Import tab's RFC 4180 parser (auto-detects tab / comma / semicolon, tolerates CRLF and BOM). SHOULD: JSON download of the same rows.
 
 ## assets.ts
 
@@ -177,7 +234,7 @@ Enriched `VersionCard`:
 
 - `global` (query): `{ q: string }` → across my studios:
   `{ shots: { _id, code, title?, productionId, productionName }[], scenes: {...}[], productions: { _id, name, code }[], assets: { _id, name, productionId, productionName, shotId? }[] }`
-  Case-insensitive substring, cap 8 per group, empty q → empty groups.
+  Case-insensitive substring, cap 8 per group, empty q → empty groups. v2: the `shots` group skips element slot shots (`elementId` set) and matches the live code (a renamed shot is found by its new code only). SHOULD: a `characters` group `{ _id, name, code, productionId, productionName }[]` (name / code, cap 8) for the command palette.
 
 ## reports.ts
 

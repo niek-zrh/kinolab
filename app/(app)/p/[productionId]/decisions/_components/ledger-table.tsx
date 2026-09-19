@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/app/empty-state";
 import { UserAvatar } from "@/components/app/user-avatar";
+import { toCsv } from "@/lib/csv";
 import { formatWhen } from "@/lib/format";
 import { copy } from "@/lib/copy";
 import { cn } from "@/lib/utils";
@@ -68,7 +69,7 @@ export function LedgerSection({
     // Excel on Windows assumes the system codepage without a BOM, which turns
     // Cyrillic titles, names and notes into mojibake — the studio is
     // Russian-speaking, so the BOM is what makes this export readable.
-    const blob = new Blob(["\uFEFF", toCsv(ledger)], {
+    const blob = new Blob(["\uFEFF", ledgerCsv(ledger)], {
       type: "text/csv;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
@@ -201,19 +202,12 @@ function LedgerTableRow({ row }: { row: LedgerRow }) {
 /* ------------------------------- CSV export ------------------------------- */
 
 /**
- * Excel and Sheets evaluate any cell that starts with = + - @ (or a leading
- * tab/CR), so an exported decision note, shot code or member name can run as
- * a formula when the producer opens the file. Prefixing with a single quote
- * marks the cell as text — the value still reads the same in the sheet.
+ * The ledger is a spreadsheet, not evidence: `toCsv` from lib/csv keeps its
+ * default formula-lead guard (a note starting with = + - @ is prefixed with
+ * a quote so Excel/Sheets never evaluate it) and CRLF line endings — the
+ * same bytes this file produced before the helper moved.
  */
-const FORMULA_LEAD = /^[=+\-@\t\r]/;
-
-function csvEscape(value: string): string {
-  const cell = FORMULA_LEAD.test(value) ? `'${value}` : value;
-  return /[",\n\r]/.test(cell) ? `"${cell.replaceAll('"', '""')}"` : cell;
-}
-
-function toCsv(rows: LedgerRow[]): string {
+function ledgerCsv(rows: LedgerRow[]): string {
   const header = [
     "decidedAt",
     "scope",
@@ -223,21 +217,16 @@ function toCsv(rows: LedgerRow[]): string {
     "approver",
     "note",
   ];
-  const lines = [header.join(",")];
-  for (const r of rows) {
-    lines.push(
-      [
-        r.decidedAt !== undefined ? new Date(r.decidedAt).toISOString() : "",
-        SCOPE_LABELS[r.scope],
-        r.targetLabel,
-        r.status,
-        r.requestedByUser.name,
-        r.approverUser.name,
-        r.note ?? "",
-      ]
-        .map(csvEscape)
-        .join(","),
-    );
-  }
-  return lines.join("\r\n");
+  return toCsv([
+    header,
+    ...rows.map((r) => [
+      r.decidedAt !== undefined ? new Date(r.decidedAt).toISOString() : "",
+      SCOPE_LABELS[r.scope],
+      r.targetLabel,
+      r.status,
+      r.requestedByUser.name,
+      r.approverUser.name,
+      r.note ?? "",
+    ]),
+  ]);
 }

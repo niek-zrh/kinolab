@@ -1,72 +1,245 @@
-# Kinolab self-hosted Convex backend + dashboard (Dokploy/Traefik).
-# Runs alongside the Corticum backend on the same server — isolation comes
-# from unique Traefik router/service names (kinolab-*), unique hostnames and
-# a unique dashboard host port. Deploy as its OWN Dokploy compose project so
-# the convex-data volume gets its own project prefix.
+# Kinolab self-hosted Convex backend + dashboard — STATELESS backend edition.
+# Compose project `kinolab-backend` (pinned by `name:` below, so the volume is
+# always kinolab-backend_kinolab-pgdata, whatever directory this file is run
+# from). Runs alongside other projects on the same server — isolation comes
+# from the project name, the kinolab-* service names, its own Postgres
+# database and its own MinIO buckets.
 #
-# The .env next to this file must contain at least:
+# Run every command from the git checkout root on the server:
+#   docker compose -f deploy/convex-backend.compose.yml <cmd>
+# with the variables in deploy/.env (template: convex-backend.env.example;
+# gitignored). README §"Rebuild: fresh server" is the runbook.
+#
+# WHERE THE STATE IS. The Convex backend container holds NO persistent state
+# and mounts NO volume — it can be deleted and recreated at will:
+#   documents, tables, indexes ............ Postgres (kinolab-postgres below,
+#                                           volume kinolab-pgdata)
+#   uploaded files, deployed function
+#   modules, search indexes, export and
+#   import staging ........................ MinIO (S3 API) on this host, OUTSIDE
+#                                           this project, buckets kinolab-*
+# Inside the container only $DATA_DIR/tmp scratch remains. The kinolab-pgdata
+# volume and MinIO's data directory are therefore ALL the state on the host —
+# the backup + offsite services below exist for exactly those two.
+# `docker compose down -v` DELETES kinolab-pgdata, the only copy of the
+# database. Plain `down` keeps it.
+#
+# !!! THE FIRST BOOT DECIDES THE STORAGE TYPE, PERMANENTLY !!!
+# On its first start against an empty database the backend writes the
+# storage type (S3 or Local, plus a per-database S3 prefix
+# `<instance>-<uuid>/`) into the database and never changes it. If that boot
+# happened without the S3 variables, every later start with them fails with
+#   "Database was initialized with Local { .. }, but backend started up with S3"
+# and the container crash-loops. So: deploy/.env must be COMPLETE (all the
+# ${VAR:?} guards below, plus the S3 endpoint if not the default) BEFORE the
+# first `up`. Choosing S3 prints NOTHING in the log; only a partial set of S3
+# variables prints "Falling back to local storage". Prove the mode after `up`:
+#   docker compose -f deploy/convex-backend.compose.yml exec kinolab-convex-backend \
+#     sh -c "tr '\0' '\n' </proc/1/cmdline | grep -E -- '--(s3|local)-storage|--db'"
+# must print `--s3-storage` and `--db` (postgres-v5) — the entrypoint execs the
+# binary, so PID 1's command line is the truth. Wrong? Before any import:
+#   docker compose -f deploy/convex-backend.compose.yml down -v   # empty DB only!
+# fix deploy/.env, `up -d` again, check again.
+#
+# deploy/.env must contain (every variable documented in the template):
 #   INSTANCE_NAME=kinolab
-#   INSTANCE_SECRET=<generate once, keep stable — admin keys derive from it>
+#   INSTANCE_SECRET=<openssl rand -hex 32, once, never change — admin keys derive from it>
 #   CONVEX_CLOUD_ORIGIN=https://api.kinolab.ai
 #   CONVEX_SITE_ORIGIN=https://actions.kinolab.ai
 #   NEXT_PUBLIC_DEPLOYMENT_URL=https://api.kinolab.ai   # dashboard → backend
-#   CONVEX_SELF_HOSTED_ADMIN_KEY=<admin key>            # nightly backup only
+#   POSTGRES_PASSWORD=<openssl rand -hex 24, once>
+#   KINOLAB_S3_ACCESS_KEY=<MinIO access key>             # user "kino" today
+#   KINOLAB_S3_SECRET_KEY=<MinIO secret key>
+#   CONVEX_SELF_HOSTED_ADMIN_KEY="<admin key>"           # nightly backup only
+# `docker compose up` REFUSES to start when any guarded value is missing or
+# empty. The MinIO credentials are deliberately NOT named AWS_ACCESS_KEY_ID /
+# AWS_SECRET_ACCESS_KEY in .env: compose lets the operator's shell override
+# .env, and an exported AWS_* pair (aws CLI, offsite bucket) would silently
+# boot the backend with the wrong keys. They are mapped to the AWS_* names
+# the backend reads only inside the container.
+# Nothing is passed via env_file: each container gets exactly the variables
+# it needs, so the dashboard never sees the database, MinIO or admin secrets.
 #
-# Admin key (for the app compose's CONVEX_SELF_HOSTED_ADMIN_KEY and for the
-# backup service below):
-#   docker compose exec kinolab-convex-backend ./generate_admin_key.sh
+# Admin key (for the app compose's CONVEX_SELF_HOSTED_ADMIN_KEY, the backup
+# service below and .env.pilot.local; same INSTANCE_NAME + INSTANCE_SECRET →
+# same key, so a rebuilt backend accepts the old key):
+#   docker compose -f deploy/convex-backend.compose.yml exec kinolab-convex-backend ./generate_admin_key.sh
+# An UNSET or empty INSTANCE_SECRET would make the image mint a random one on
+# every container start (no volume to keep it) — hence the guard.
 #
 # Dashboard: bound to localhost only — reach it via SSH tunnel:
-#   ssh -L 6792:127.0.0.1:6792 <rock>   →   http://localhost:6792
+#   ssh -L 6792:127.0.0.1:6792 <server>   →   http://localhost:6792
 #
-# IMAGE PINNING: both images are pinned to an explicit build tag, never
+# IMAGE PINNING: both Convex images are pinned to an explicit build tag, never
 # `:latest`. `:latest` means any `docker compose up`/container recreate can
 # swap the database engine under a live pilot — an upgrade is a decision, not
 # a side effect. Upgrading deliberately: export first (see README §Backups),
-# then bump CONVEX_IMAGE_TAG in .env and `docker compose up -d`.
+# then bump CONVEX_IMAGE_TAG in .env and `docker compose up -d`. Newest
+# stable build at the time of writing (2026-09-18), for both images:
+# cf8398b4719cc7c32454229ccad52922398b7d67.
 #
-# TLS: every router below uses ${TRAEFIK_ENTRYPOINT:-web}, i.e. plain HTTP
-# between the proxy and these containers. See README §"The Cloudflare → origin
-# hop" for what that means and how to move to a websecure entrypoint.
+# PROXY. The public hostnames terminate at Caddy on the HOST (behind
+# Cloudflare — responses carry `via: 1.1 Caddy`). The backend publishes its
+# two ports on loopback only, and joins NO external network:
+#   127.0.0.1:${KINOLAB_API_PORT:-3230}  → 3210  api.kinolab.ai     (CONVEX_CLOUD_ORIGIN)
+#   127.0.0.1:${KINOLAB_SITE_PORT:-3231} → 3211  actions.kinolab.ai (CONVEX_SITE_ORIGIN)
+# (3230/3231 rather than 3210/3211: another Convex backend on this host may
+# already hold the defaults.) Caddyfile:
+#
+#   api.kinolab.ai {
+#       reverse_proxy 127.0.0.1:3230
+#   }
+#   actions.kinolab.ai {
+#       reverse_proxy 127.0.0.1:3231
+#   }
+#
+# `reverse_proxy` passes WebSockets (the Convex sync protocol on /api/sync)
+# through unchanged. If Caddy runs as a CONTAINER instead, loopback ports are
+# invisible to it: attach that container to the kinolab-backend_kinolab-internal
+# network (`docker network connect kinolab-backend_kinolab-internal <caddy>`)
+# and target kinolab-convex-backend:3210 / :3211 by service name.
+# Traefik/Dokploy hosts: add a `networks: [proxy]` entry + traefik.* labels to
+# the backend service in a compose override file (keep this file
+# proxy-agnostic); the git history before 2026-09-19 has the label set.
+#
+# TLS: Caddy → 127.0.0.1 is plain HTTP on the host itself; Cloudflare → Caddy
+# is README §"The Cloudflare → origin hop".
+#
+# RESTORING DATA INTO A FRESH BACKEND. An export zip never contains the
+# deployment's env vars or the deployed code, and a backend pointed at an
+# EMPTY database has no functions until they are pushed. Do NOT do it by hand
+# (`npx convex env set NAME value` chokes on JWT_PRIVATE_KEY, which starts
+# with `-----`; `import` prompts without --yes): after `up -d` and the S3
+# check above, run from a machine with this repo + `pnpm install`:
+#   scripts/pilot-rebuild.sh <export.zip> <env-dump.env>     # README §Rebuild
+# It refuses to touch a backend that already has env vars set (i.e. not
+# fresh), imports the zip with --replace-all, replays the env dump, pushes
+# convex/ and verifies. The CLI reaches the backend through
+# CONVEX_SELF_HOSTED_URL + CONVEX_SELF_HOSTED_ADMIN_KEY in .env.pilot.local —
+# point Caddy at this backend first, or use an SSH tunnel to 127.0.0.1:3230.
+# Recreating the CONTAINER against the same database needs none of this.
+
+name: kinolab-backend
 
 services:
+  # Documents, tables and indexes. postgres:17 = the major upstream Convex
+  # tests its self-hosted backend against. Pinned to the MAJOR only: 17.x
+  # minors are drop-in on the same data directory, whereas a major bump (18)
+  # refuses to start on 17's files and the official 18 image even moves the
+  # data directory (/var/lib/postgresql/18/docker). A major upgrade is a
+  # pg_upgrade or dump/restore, planned like a backend upgrade (README
+  # §Upgrading), never a tag change under a running pilot.
+  kinolab-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    # The official image already stops with SIGINT (fast shutdown); give the
+    # final checkpoint time instead of letting Docker SIGKILL it at 10s.
+    # Compose stops dependants (the backend) first, so no client is writing.
+    stop_grace_period: 60s
+    environment:
+      # The backend derives its database name from INSTANCE_NAME ('-' → '_')
+      # and connects to that — POSTGRES_URL below carries no database name on
+      # purpose. Tying POSTGRES_DB to INSTANCE_NAME keeps the two in step; it
+      # is exact as long as the instance name contains no '-' (kinolab).
+      # POSTGRES_USER/POSTGRES_PASSWORD are applied only when the volume is
+      # first initialised; to rotate later: ALTER USER inside the container,
+      # then change .env.
+      POSTGRES_DB: ${INSTANCE_NAME:?set INSTANCE_NAME in deploy/.env}
+      POSTGRES_USER: ${POSTGRES_USER:-convex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env (openssl rand -hex 24)}
+    volumes:
+      # This volume + the MinIO buckets are the ONLY state on the host.
+      - kinolab-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # -h 127.0.0.1 forces TCP: initdb's temporary server listens on the unix
+      # socket only, so a socket check would report "ready" mid-initialisation
+      # and the backend would connect to a database that does not exist yet.
+      test: pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-convex} -d ${INSTANCE_NAME:?set INSTANCE_NAME in deploy/.env}
+      interval: 5s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+    networks:
+      - kinolab-internal
+
   kinolab-convex-backend:
     # Tag c0cb7ae… is what ghcr's `latest` resolved to on 2026-08-18
     # (digest sha256:1f2044e3eac463ac78973b136c0baf72d4ada602611d853d6f99f280e29e0a98);
     # get-convex publishes one commit-sha tag per build and never moves them.
+    # At this commit self-hosted/docker-build/run_backend.sh is what turns the
+    # variables below into backend flags — the comments cite its behaviour.
     image: ghcr.io/get-convex/convex-backend:${CONVEX_IMAGE_TAG:-c0cb7ae17f54e14846c243c5332a8a5e6d0e19d4}
     restart: unless-stopped
     stop_grace_period: 10s
     stop_signal: SIGINT
-    env_file:
-      - .env
-    volumes:
-      - convex-data:/convex/data
+    # NO volumes — on purpose (see the header). If you find yourself adding
+    # one back, the Postgres/S3 variables below are not reaching the container.
+    environment:
+      # --- Identity. Both guarded: an empty INSTANCE_SECRET would be replaced
+      # by a random one on every start (read_credentials.sh) and every stored
+      # admin key would silently stop working; an empty INSTANCE_NAME falls
+      # back to "convex-self-hosted", whose database does not exist here.
+      INSTANCE_NAME: ${INSTANCE_NAME:?set INSTANCE_NAME in deploy/.env}
+      INSTANCE_SECRET: ${INSTANCE_SECRET:?set INSTANCE_SECRET in deploy/.env (openssl rand -hex 32; never change it)}
+      # --- Public origins → --convex-origin / --convex-site. Convex functions
+      # see CONVEX_SITE_URL derived from CONVEX_SITE_ORIGIN.
+      CONVEX_CLOUD_ORIGIN: ${CONVEX_CLOUD_ORIGIN:?set CONVEX_CLOUD_ORIGIN in deploy/.env}
+      CONVEX_SITE_ORIGIN: ${CONVEX_SITE_ORIGIN:?set CONVEX_SITE_ORIGIN in deploy/.env}
+      # Optional switches run_backend.sh turns into flags only when non-empty.
+      DISABLE_BEACON: ${DISABLE_BEACON:-}
+      REDACT_LOGS_TO_CLIENT: ${REDACT_LOGS_TO_CLIENT:-}
+      # --- Database. POSTGRES_URL → `--db postgres-v5`. The URL carries NO
+      # database name and NO query parameters; the backend appends the
+      # database itself (INSTANCE_NAME with '-' → '_', see kinolab-postgres).
+      POSTGRES_URL: postgresql://${POSTGRES_USER:-convex}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env (openssl rand -hex 24)}@kinolab-postgres:5432
+      # Plain TCP inside the compose network — the postgres image has no TLS
+      # configured. Any non-empty value → `--do-not-require-ssl`.
+      DO_NOT_REQUIRE_SSL: "1"
+      # --- Blob storage: MinIO on this host, outside this project (API port
+      # 9000, console 9001). AWS_REGION + ALL FIVE buckets must be set, or
+      # run_backend.sh falls back to `--local-storage /convex/data/storage`
+      # (inside a container without a volume) — and the first boot pins that
+      # choice into the database forever (header). All six are fixed here so
+      # the fallback cannot happen through a missing .env line.
+      S3_ENDPOINT_URL: ${KINOLAB_S3_ENDPOINT:-http://host.docker.internal:9000}
+      AWS_REGION: ${KINOLAB_S3_REGION:-us-east-1}
+      # Guarded: a missing key must abort `up`, not fail at the first upload.
+      # Project-prefixed names in .env (header explains why), AWS_* inside.
+      AWS_ACCESS_KEY_ID: ${KINOLAB_S3_ACCESS_KEY:?set KINOLAB_S3_ACCESS_KEY (MinIO access key) in deploy/.env}
+      AWS_SECRET_ACCESS_KEY: ${KINOLAB_S3_SECRET_KEY:?set KINOLAB_S3_SECRET_KEY (MinIO secret key) in deploy/.env}
+      S3_STORAGE_FILES_BUCKET: ${S3_STORAGE_FILES_BUCKET:-kinolab-files}
+      S3_STORAGE_MODULES_BUCKET: ${S3_STORAGE_MODULES_BUCKET:-kinolab-modules}
+      S3_STORAGE_SEARCH_BUCKET: ${S3_STORAGE_SEARCH_BUCKET:-kinolab-search}
+      S3_STORAGE_EXPORTS_BUCKET: ${S3_STORAGE_EXPORTS_BUCKET:-kinolab-exports}
+      S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET: ${S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET:-kinolab-snapshot-imports}
+      # The S3 booleans (crates/aws_utils) go through Rust's bool parser: the
+      # value must be the literal string `true` — "1" is silently false.
+      # MinIO needs path-style addressing (bucket in the path, not the host;
+      # virtual-host addressing fails against it)…
+      AWS_S3_FORCE_PATH_STYLE: "true"
+      # …and rejects the SSE header ("KMS not configured"). Trailing checksums
+      # DO work against it — do NOT set AWS_S3_DISABLE_CHECKSUMS.
+      AWS_S3_DISABLE_SSE: "true"
+    extra_hosts:
+      # The host's own name does not resolve inside containers; host-gateway
+      # maps host.docker.internal to the host (Linux Docker 20.10+).
+      # Alternative: KINOLAB_S3_ENDPOINT=http://<LAN IP>:9000 in .env.
+      - "host.docker.internal:host-gateway"
+    ports:
+      # Loopback only — for the host-level Caddy (see the header). Not
+      # reachable from the LAN or the internet.
+      - "127.0.0.1:${KINOLAB_API_PORT:-3230}:3210"
+      - "127.0.0.1:${KINOLAB_SITE_PORT:-3231}:3211"
+    depends_on:
+      kinolab-postgres:
+        condition: service_healthy
     healthcheck:
       test: curl -f http://localhost:3210/version
       interval: 5s
       start_period: 30s
       retries: 5
     networks:
-      - dokploy-network
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=dokploy-network
-      - traefik.http.routers.kinolab-convex-cloud.rule=Host(`api.kinolab.ai`)
-      - traefik.http.routers.kinolab-convex-cloud.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
-      - traefik.http.routers.kinolab-convex-cloud.tls=${TRAEFIK_TLS:-false}
-      - traefik.http.routers.kinolab-convex-cloud.service=kinolab-convex-cloud-svc
-      - traefik.http.services.kinolab-convex-cloud-svc.loadbalancer.server.port=3210
-      - traefik.http.routers.kinolab-convex-site.rule=Host(`actions.kinolab.ai`)
-      - traefik.http.routers.kinolab-convex-site.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
-      - traefik.http.routers.kinolab-convex-site.tls=${TRAEFIK_TLS:-false}
-      - traefik.http.routers.kinolab-convex-site.service=kinolab-convex-site-svc
-      - traefik.http.services.kinolab-convex-site-svc.loadbalancer.server.port=3211
-      # With a websecure entrypoint that uses Let's Encrypt, ALSO add (a
-      # certresolver label with an empty value makes Traefik drop the router,
-      # so this cannot be an env var with a blank default):
-      # - traefik.http.routers.kinolab-convex-cloud.tls.certresolver=letsencrypt
-      # - traefik.http.routers.kinolab-convex-site.tls.certresolver=letsencrypt
+      - kinolab-internal
 
   kinolab-convex-dashboard:
     # Same build as the backend above — keep the two tags in step.
@@ -75,24 +248,36 @@ services:
     restart: unless-stopped
     stop_grace_period: 10s
     stop_signal: SIGINT
-    env_file:
-      - .env
+    environment:
+      # The ONLY variable the dashboard needs (upstream passes the same one).
+      # The browser on the SSH tunnel talks to this URL; the admin key is
+      # typed into the dashboard, never configured here.
+      NEXT_PUBLIC_DEPLOYMENT_URL: ${NEXT_PUBLIC_DEPLOYMENT_URL:?set NEXT_PUBLIC_DEPLOYMENT_URL in deploy/.env}
     ports:
       - "127.0.0.1:6792:6791"
     depends_on:
       kinolab-convex-backend:
         condition: service_healthy
     networks:
-      - dokploy-network
+      - kinolab-internal
 
   # The studio's entire production record — every decision, pick, gate, report
-  # and QC run, plus the uploaded images — lives in the convex-data volume, so
-  # it needs a copy that is not that volume. This takes a full snapshot
+  # and QC run, plus the uploaded images — lives in Postgres + MinIO on this
+  # host, so it needs a copy that is neither. This takes a full snapshot
   # (documents + file storage) with `npx convex export` on a fixed interval and
   # keeps the last BACKUP_KEEP_DAYS days. Restore procedure: README §Backups —
   # a backup nobody has restored is not a backup.
+  # With S3 storage the backend STAGES the export in S3_STORAGE_EXPORTS_BUCKET
+  # (kinolab-exports) first and the CLI then downloads it to /backups — so an
+  # export needs MinIO healthy, and the bucket keeps a copy of each zip: check
+  # `mc ls local/kinolab-exports` now and then and add an expiry rule if it
+  # accumulates. A restore stages the zip in kinolab-snapshot-imports the
+  # same way (which is also a cheap proof that the backend runs on S3).
   # Talks to the backend over the compose network, so backups do not depend on
-  # Traefik, DNS or the public hostname being up.
+  # Caddy, DNS or the public hostname being up.
+  # The zip is written under /backups/.partial/ and renamed into place only
+  # when the export succeeded, so the offsite mirror never copies a
+  # half-written file.
   kinolab-convex-backup:
     image: node:22-alpine
     restart: unless-stopped
@@ -105,13 +290,17 @@ services:
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
     volumes:
       # Bind mount, not a named volume: the operator must be able to `scp` the
-      # zips OFF this host. A backup on the machine it backs up is half a backup.
-      - ${BACKUP_DIR:-./backups}:/backups
+      # zips OFF this host (or let kinolab-offsite below do it). A backup on
+      # the machine it backs up is half a backup. Absolute default OUTSIDE
+      # the git checkout: a relative path would resolve against deploy/ and
+      # put every export one `git add -A` away from a commit. Docker creates
+      # the directory on first `up`.
+      - ${BACKUP_DIR:-/var/backups/kinolab}:/backups
     depends_on:
       kinolab-convex-backend:
         condition: service_healthy
     networks:
-      - dokploy-network
+      - kinolab-internal
     # convex@1.44.0 = the version this repo builds against (package.json).
     entrypoint:
       - sh
@@ -119,27 +308,116 @@ services:
       - |
         # A throwaway project dir: the CLI is happier run from one, and it
         # keeps npx's scratch files out of the backup directory.
-        mkdir -p /app && printf '{"name":"kinolab-backup","private":true}' > /app/package.json
+        mkdir -p /app /backups/.partial && printf '{"name":"kinolab-backup","private":true}' > /app/package.json
         while true; do
           if [ -z "$$CONVEX_SELF_HOSTED_ADMIN_KEY" ]; then
             echo "[backup] CONVEX_SELF_HOSTED_ADMIN_KEY is not set — NO BACKUP IS BEING TAKEN."
           else
-            out="/backups/kinolab-$$(date -u +%Y%m%dT%H%M%SZ).zip"
-            echo "[backup] exporting $$CONVEX_SELF_HOSTED_URL -> $$out"
-            if npx --yes convex@1.44.0 export --include-file-storage --path "$$out"; then
-              echo "[backup] ok: $$out"
-              find /backups -name 'kinolab-*.zip' -mtime "+$$BACKUP_KEEP_DAYS" -delete
+            name="kinolab-$$(date -u +%Y%m%dT%H%M%SZ).zip"
+            part="/backups/.partial/$$name"
+            rm -f "$$part"
+            echo "[backup] exporting $$CONVEX_SELF_HOSTED_URL -> /backups/$$name"
+            if npx --yes convex@1.44.0 export --include-file-storage --path "$$part" && mv "$$part" "/backups/$$name"; then
+              echo "[backup] ok: /backups/$$name"
+              find /backups -maxdepth 1 -name 'kinolab-*.zip' -mtime "+$$BACKUP_KEEP_DAYS" -delete
             else
-              echo "[backup] FAILED — check the admin key and the backend health"
-              rm -f "$$out"
+              echo "[backup] FAILED — check the admin key, the backend health and MinIO (exports are staged in the exports bucket)"
+              rm -f "$$part"
             fi
           fi
           sleep "$$BACKUP_INTERVAL_SECONDS"
         done
 
+  # Off-host copy — replaces the "scp the zips off the host" chore. Every
+  # OFFSITE_INTERVAL_SECONDS it mirrors (1) the export zips in BACKUP_DIR to
+  # <bucket>/backups/ and (2) MinIO's files bucket to <bucket>/files/, on ANY
+  # S3-compatible bucket somewhere else (Cloudflare R2, Backblaze B2, Hetzner
+  # Object Storage, AWS S3…).
+  # The zips are the restorable artifact (they carry the blobs). files/ is a
+  # belt-and-braces raw copy of the uploads: it can only be read back
+  # together with the `_storage` rows in a zip, and it doubles the offsite
+  # footprint — drop the second mirror below if that matters.
+  # Not covered on purpose: the modules/search buckets (re-created by
+  # `npx convex deploy`) and Postgres itself (its contents are in the zips).
+  # `mc mirror --overwrite` never deletes: zips rotated away locally stay
+  # offsite, so put a lifecycle/expiry rule on the offsite bucket if it must
+  # not grow forever. Restore = download a zip, `npx convex import` (README
+  # §Backups).
+  kinolab-offsite:
+    # Pinned like everything else. MinIO publishes mc on quay.io (the Docker
+    # Hub repository is no longer maintained); RELEASE.2025-08-13T08-35-41Z is
+    # the newest release as of 2026-09-19. Bump MC_IMAGE_TAG deliberately.
+    image: quay.io/minio/mc:${MC_IMAGE_TAG:-RELEASE.2025-08-13T08-35-41Z}
+    restart: unless-stopped
+    environment:
+      # Any S3-compatible endpoint as a normal URL, e.g. Cloudflare R2:
+      # https://<account-id>.r2.cloudflarestorage.com. All four unset =
+      # the service logs "NO OFFSITE COPY IS BEING MADE" and waits.
+      OFFSITE_S3_ENDPOINT: ${OFFSITE_S3_ENDPOINT:-}
+      OFFSITE_ACCESS_KEY_ID: ${OFFSITE_ACCESS_KEY_ID:-}
+      OFFSITE_SECRET_ACCESS_KEY: ${OFFSITE_SECRET_ACCESS_KEY:-}
+      OFFSITE_BUCKET: ${OFFSITE_BUCKET:-}
+      # Default: every 15 minutes.
+      OFFSITE_INTERVAL_SECONDS: ${OFFSITE_INTERVAL_SECONDS:-900}
+      # The local MinIO, same endpoint/credentials/bucket as the backend uses.
+      # (mc addresses buckets path-style by default — nothing to set.)
+      LOCAL_S3_ENDPOINT: ${KINOLAB_S3_ENDPOINT:-http://host.docker.internal:9000}
+      LOCAL_ACCESS_KEY_ID: ${KINOLAB_S3_ACCESS_KEY:-}
+      LOCAL_SECRET_ACCESS_KEY: ${KINOLAB_S3_SECRET_KEY:-}
+      LOCAL_FILES_BUCKET: ${S3_STORAGE_FILES_BUCKET:-kinolab-files}
+      # mc needs a writable config dir for its aliases.
+      MC_CONFIG_DIR: /tmp/.mc
+    volumes:
+      # Read-only: this service copies, it never rotates or writes.
+      - ${BACKUP_DIR:-/var/backups/kinolab}:/backups:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - kinolab-internal
+    entrypoint:
+      - sh
+      - -c
+      - |
+        # `mc alias set` takes the credentials as arguments, so a secret
+        # containing / # ? % or @ needs no URL-encoding (MC_HOST_* would).
+        # Aliases are (re)set on every cycle: cheap, and it surfaces a broken
+        # endpoint or key in the log instead of a confusing mirror error.
+        while true; do
+          if [ -z "$$OFFSITE_S3_ENDPOINT" ] || [ -z "$$OFFSITE_ACCESS_KEY_ID" ] || [ -z "$$OFFSITE_SECRET_ACCESS_KEY" ] || [ -z "$$OFFSITE_BUCKET" ]; then
+            echo "[offsite] OFFSITE_S3_ENDPOINT / OFFSITE_ACCESS_KEY_ID / OFFSITE_SECRET_ACCESS_KEY / OFFSITE_BUCKET not set — NO OFFSITE COPY IS BEING MADE."
+          elif ! mc alias set offsite "$$OFFSITE_S3_ENDPOINT" "$$OFFSITE_ACCESS_KEY_ID" "$$OFFSITE_SECRET_ACCESS_KEY" >/dev/null; then
+            echo "[offsite] cannot reach $$OFFSITE_S3_ENDPOINT with OFFSITE_ACCESS_KEY_ID — nothing mirrored this cycle"
+          else
+            echo "[offsite] mirroring /backups -> offsite/$$OFFSITE_BUCKET/backups"
+            if mc mirror --overwrite --exclude '.partial/*' /backups "offsite/$$OFFSITE_BUCKET/backups"; then
+              echo "[offsite] ok: backups"
+            else
+              echo "[offsite] backups mirror FAILED — check OFFSITE_* and that the bucket exists"
+            fi
+            if ! mc alias set local "$$LOCAL_S3_ENDPOINT" "$$LOCAL_ACCESS_KEY_ID" "$$LOCAL_SECRET_ACCESS_KEY" >/dev/null; then
+              echo "[offsite] cannot reach the local MinIO at $$LOCAL_S3_ENDPOINT with KINOLAB_S3_ACCESS_KEY — files not mirrored"
+            else
+              echo "[offsite] mirroring local/$$LOCAL_FILES_BUCKET -> offsite/$$OFFSITE_BUCKET/files"
+              if mc mirror --overwrite "local/$$LOCAL_FILES_BUCKET" "offsite/$$OFFSITE_BUCKET/files"; then
+                echo "[offsite] ok: files"
+              else
+                echo "[offsite] files mirror FAILED — check the MinIO keys and host.docker.internal:9000"
+              fi
+            fi
+          fi
+          sleep "$$OFFSITE_INTERVAL_SECONDS"
+        done
+
 networks:
-  dokploy-network:
-    external: true
+  # Backend ⇄ Postgres, plus backup/dashboard/offsite. Deliberately NOT
+  # `internal: true`: the backend needs egress (Google APIs) and
+  # host-gateway to reach MinIO, the offsite service needs the internet.
+  # No external network: the host Caddy reaches the loopback ports (header).
+  kinolab-internal:
 
 volumes:
-  convex-data:
+  # convex-data is GONE ON PURPOSE: the backend keeps nothing on disk any
+  # more (documents → kinolab-pgdata, blobs → MinIO). Do not add it back.
+  # The only named volume in this project — and, with MinIO's data directory,
+  # the only state on the host. `docker compose down -v` deletes it.
+  kinolab-pgdata:

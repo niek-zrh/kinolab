@@ -5,11 +5,15 @@ import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
+  // A hold (the Review Room, see components/app/theme-provider.tsx) beats the
+  // preference; otherwise the resolved theme so "system" lands on a real one.
+  // Before hydration neither is known — dark is the app default.
+  const { resolvedTheme, forcedTheme } = useTheme()
+  const theme = (forcedTheme ?? resolvedTheme ?? "dark") as ToasterProps["theme"]
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={theme}
       className="toaster group"
       icons={{
         success: (

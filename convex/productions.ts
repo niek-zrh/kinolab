@@ -233,21 +233,26 @@ export const listForStudio = query({
         // feed). No enrichment here, so one read per shot counted.
         const byStatus: Record<string, number> = {};
         let total = 0;
+        let scanned = 0; // the ceiling bounds reads, counted or not
         for await (const shot of ctx.db
           .query("shots")
           .withIndex("by_production", (q) =>
             q.eq("productionId", production._id),
           )) {
-          byStatus[shot.status] = (byStatus[shot.status] ?? 0) + 1;
-          total += 1;
-          if (total >= ceiling) break;
+          scanned += 1;
+          // v2 item b: element slot shots are characters, not shots.
+          if (shot.elementId === undefined) {
+            byStatus[shot.status] = (byStatus[shot.status] ?? 0) + 1;
+            total += 1;
+          }
+          if (scanned >= ceiling) break;
         }
         return {
           ...publicProduction(production),
           shotCounts: { total, byStatus },
           // Additive: lets the home page render "800+" instead of quietly
           // presenting a saturated count as the real one.
-          shotCountsCapped: total >= ceiling,
+          shotCountsCapped: scanned >= ceiling,
         };
       }),
     );

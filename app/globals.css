@@ -2,6 +2,10 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* next-themes puts `dark` / `light` on <html> (attribute="class", storage key
+   `kinolab-theme`, default dark). The Review Room holds the document in `dark`
+   while it is mounted (components/app/theme-provider.tsx), so portals — dialogs,
+   menus, toasts — follow the room without per-dialog class hacks. */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -50,22 +54,30 @@
 
     /* Kinolab brand tokens (kinolab.ai) */
     --color-tape: var(--tape);
+    /* Literal on purpose: the tape accent is the same orange in both themes and
+       always carries dark glyphs (brand rule), so its foreground never flips. */
     --color-tape-foreground: #16181d;
-    --color-status-planned: #8a8f98;
-    --color-status-generating: #b58900;
-    --color-status-options_ready: #2e7de1;
-    --color-status-in_review: #7048e8;
-    --color-status-picked: #ff6b2c;
-    --color-status-approved: #1f9d55;
-    --color-status-rework: #d97706;
-    --color-status-final: #0f766e;
-    --color-status-delivered: #334155;
-    --color-status-killed: #991b1b;
+
+    /* Shot status hues (spec §9.2). Per-theme values live in :root / .dark
+       below — pill text on its 10% tint ≥ 4.5:1, dots and strip edges ≥ 3:1
+       against card, strip and page in both themes (checked 2026-09-19). */
+    --color-status-planned: var(--status-planned);
+    --color-status-generating: var(--status-generating);
+    --color-status-options_ready: var(--status-options_ready);
+    --color-status-in_review: var(--status-in_review);
+    --color-status-picked: var(--status-picked);
+    --color-status-approved: var(--status-approved);
+    --color-status-rework: var(--status-rework);
+    --color-status-final: var(--status-final);
+    --color-status-delivered: var(--status-delivered);
+    --color-status-killed: var(--status-killed);
 }
 
-/* Management surfaces: "production office" — warm paper, calm.
+/* Light: "production office" — warm paper, calm. A preference since v1.1
+   (DECISIONS 2026-09-19); the app opens dark.
    Palette derived from kinolab.ai (warm ink #f3efe8 family + accent #ff6b2c). */
 :root {
+    color-scheme: light;
     --background: #f7f5f0; /* warm paper */
     --foreground: #16181d; /* brand ink-dark */
     --card: #fffefa; /* Panel */
@@ -100,10 +112,26 @@
     --sidebar-ring: #ff6b2c;
     /* Brand accent (kinolab.ai): primary actions, Pick, unread markers only. */
     --tape: #ff6b2c;
+
+    /* Status hues on paper: deep enough to read as 12px pill text on their own
+       10% tint (worst case on the slate strip ≥ 4.5:1). Picked is a burnt tape
+       orange here — #ff6b2c itself is 2.8:1 on paper. */
+    --status-planned: #5f646d;
+    --status-generating: #7c5e00;
+    --status-options_ready: #1f63c4;
+    --status-in_review: #6842d6;
+    --status-picked: #b63a0a;
+    --status-approved: #137236;
+    --status-rework: #a34a06;
+    --status-final: #0d6a62;
+    --status-delivered: #334155;
+    --status-killed: #991b1b;
 }
 
-/* Review Room: "grading suite" — the kinolab.ai dark palette, verbatim. */
+/* Dark: the kinolab.ai palette, verbatim. Default for every surface; the
+   Review Room ("grading suite") is held here regardless of preference. */
 .dark {
+    color-scheme: dark;
     --background: #0b0d11;
     --foreground: #f3efe8;
     --card: #12161d;
@@ -136,6 +164,19 @@
     --sidebar-border: rgba(243, 239, 232, 0.12);
     --sidebar-ring: #ff6b2c;
     --tape: #ff6b2c;
+
+    /* Status hues on ink: lifted and slightly desaturated so they sit in the
+       card rather than glow; picked is the real tape orange (6.4:1 here). */
+    --status-planned: #9ea3ab;
+    --status-generating: #e3b53d;
+    --status-options_ready: #5b9dff;
+    --status-in_review: #a78bfa;
+    --status-picked: #ff6b2c;
+    --status-approved: #4cc47a;
+    --status-rework: #f59e0b;
+    --status-final: #2fc4b2;
+    --status-delivered: #93a5c8;
+    --status-killed: #f0716a;
 }
 
 @layer base {
@@ -148,6 +189,20 @@
   html {
     @apply font-sans;
     }
+
+  /* Reduced motion: keep every animation and transition effectively instant
+     (0.01ms still fires animationend/transitionend, so Base UI popups that wait
+     for those events close normally). The clap on Pick has its own rule below. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 @layer components {
@@ -158,6 +213,13 @@
     border-top: 2px solid var(--strip-color, var(--border));
     border-top-left-radius: inherit;
     border-top-right-radius: inherit;
+  }
+
+  /* Thumbnails (option cards, board cards, files, filmstrip): a hairline and a
+     muted letterbox so a light still does not float on ink and a dark still
+     does not sink into paper. Apply to the <img> or its aspect box. */
+  .thumb-frame {
+    @apply border border-border bg-muted;
   }
 
   /* One orchestrated moment: the "clap" on Pick (spec §9.2). */

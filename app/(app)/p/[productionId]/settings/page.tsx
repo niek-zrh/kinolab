@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
-import { ExternalLink, Plus, Users } from "lucide-react";
+import { ExternalLink, Plus, SunMoon, Users } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +49,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { AppearanceSegmented } from "@/components/app/appearance-control";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { useStudio } from "@/components/app/studio-context";
 import {
@@ -95,14 +96,6 @@ const LINK_KINDS: { key: LinkKind; label: string }[] = [
   { key: "other", label: "Other" },
 ];
 
-const SECTIONS = [
-  { id: "details", label: "Details" },
-  { id: "stages", label: "Stages & gates" },
-  { id: "links", label: "Links" },
-  { id: "drive", label: "Drive hub" },
-  { id: "team", label: "Team" },
-];
-
 type StageRow = (typeof api.productions.listStages._returnType)[number];
 type TeamMember = (typeof api.studios.team._returnType)[number];
 type ExternalLinkRow = (typeof api.externalLinks.list._returnType)[number];
@@ -114,16 +107,44 @@ const STAGE_STATUS_LABEL: Record<StageRow["status"], string> = {
   done: "Done",
 };
 
+/**
+ * Settings is open to every role since v1.1 (DECISIONS 2026-09-19): the
+ * Appearance card is personal and comes first. The cards that need
+ * production.manage (Details editing, Stages & gates, Drive hub) gate
+ * themselves; Links is readable by everyone and editable by content.edit
+ * roles (spec v2 §(e)).
+ */
 export default function SettingsPage() {
   const params = useParams<{ productionId: string }>();
   const productionId = params.productionId as Id<"productions">;
   const { studioId, role } = useStudio();
   const canManage = role === "owner" || role === "producer";
+  // content.edit roles, mirrored from convex/lib/permissions.ts the way the
+  // shot pages do (no client-side capability helper exists — permissions.ts
+  // is server-only). The matching externalLinks.* permission flip on the
+  // backend is tracked with item (e).
+  const canEditLinks =
+    canManage || role === "creative_director" || role === "supervisor";
 
   const production = useQuery(api.productions.get, { productionId });
-  const stages = useQuery(api.productions.listStages, { productionId });
+  const stages = useQuery(
+    api.productions.listStages,
+    canManage ? { productionId } : "skip",
+  );
   const links = useQuery(api.externalLinks.list, { productionId });
-  const team = useQuery(api.studios.team, studioId ? { studioId } : "skip");
+  const team = useQuery(
+    api.studios.team,
+    canManage && studioId ? { studioId } : "skip",
+  );
+
+  const sections = [
+    { id: "appearance", label: "Appearance" },
+    { id: "details", label: "Details" },
+    ...(canManage ? [{ id: "stages", label: "Stages & gates" }] : []),
+    { id: "links", label: "Links" },
+    ...(canManage ? [{ id: "drive", label: "Drive hub" }] : []),
+    { id: "team", label: "Team" },
+  ];
 
   return (
     <main className="flex-1 px-6 py-6">
@@ -133,7 +154,7 @@ export default function SettingsPage() {
             Settings
           </h1>
           <nav className="mt-2 flex flex-wrap items-center gap-1 text-sm">
-            {SECTIONS.map((s) => (
+            {sections.map((s) => (
               <a
                 key={s.id}
                 href={`#${s.id}`}
@@ -145,6 +166,10 @@ export default function SettingsPage() {
           </nav>
         </div>
 
+        <section id="appearance" className="scroll-mt-20">
+          <AppearanceCard />
+        </section>
+
         <section id="details" className="scroll-mt-20">
           <DetailsCard
             productionId={productionId}
@@ -153,25 +178,29 @@ export default function SettingsPage() {
           />
         </section>
 
-        <section id="stages" className="scroll-mt-20">
-          <StagesCard stages={stages} team={team} canManage={canManage} />
-        </section>
+        {canManage && (
+          <section id="stages" className="scroll-mt-20">
+            <StagesCard stages={stages} team={team} canManage={canManage} />
+          </section>
+        )}
 
         <section id="links" className="scroll-mt-20">
           <LinksCard
             productionId={productionId}
             links={links}
-            canManage={canManage}
+            canEdit={canEditLinks}
           />
         </section>
 
-        <section id="drive" className="scroll-mt-20">
-          <DriveConnectCard
-            productionId={productionId}
-            returnTo={`/p/${productionId}/settings`}
-            canManage={canManage}
-          />
-        </section>
+        {canManage && (
+          <section id="drive" className="scroll-mt-20">
+            <DriveConnectCard
+              productionId={productionId}
+              returnTo={`/p/${productionId}/settings`}
+              canManage={canManage}
+            />
+          </section>
+        )}
 
         <section id="team" className="scroll-mt-20">
           <Card size="sm">
@@ -196,6 +225,29 @@ export default function SettingsPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Appearance — personal, per device (components/app/theme-provider.tsx)
+// ---------------------------------------------------------------------------
+
+function AppearanceCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <SunMoon className="size-4 text-muted-foreground" /> Appearance
+        </CardTitle>
+        <CardDescription>
+          Yours, on this device — it changes nothing for the production or
+          anyone else.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <AppearanceSegmented />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -498,17 +550,17 @@ function ApproversCell({
 }
 
 // ---------------------------------------------------------------------------
-// Links
+// Links — read by everyone, edited by content.edit roles (spec v2 §(e))
 // ---------------------------------------------------------------------------
 
 function LinksCard({
   productionId,
   links,
-  canManage,
+  canEdit,
 }: {
   productionId: Id<"productions">;
   links: ExternalLinkRow[] | undefined;
-  canManage: boolean;
+  canEdit: boolean;
 }) {
   const remove = useMutation(api.externalLinks.remove);
 
@@ -519,7 +571,7 @@ function LinksCard({
         <CardDescription>
           Budget, boards and chat — everything the production leans on.
         </CardDescription>
-        {canManage && (
+        {canEdit && (
           <CardAction>
             <AddLinkDialog productionId={productionId} />
           </CardAction>
@@ -530,7 +582,7 @@ function LinksCard({
           <Skeleton className="h-24 w-full" />
         ) : links.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No links yet.{canManage && " Add the budget sheet or Figma board."}
+            No links yet.{canEdit && " Add the budget sheet or Figma board."}
           </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border">
@@ -540,7 +592,7 @@ function LinksCard({
                   <TableHead className="w-24">Kind</TableHead>
                   <TableHead className="w-56">Title</TableHead>
                   <TableHead>URL</TableHead>
-                  {canManage && <TableHead className="w-20" />}
+                  {canEdit && <TableHead className="w-20" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -552,7 +604,7 @@ function LinksCard({
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {canManage ? (
+                      {canEdit ? (
                         <LinkFieldInput
                           key={`t-${link._id}-${link.title}`}
                           linkId={link._id}
@@ -564,7 +616,7 @@ function LinksCard({
                       )}
                     </TableCell>
                     <TableCell>
-                      {canManage ? (
+                      {canEdit ? (
                         <div className="flex items-center gap-1.5">
                           <LinkFieldInput
                             key={`u-${link._id}-${link.url}`}
@@ -589,13 +641,14 @@ function LinksCard({
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex max-w-72 items-center gap-1.5 truncate text-sm underline-offset-4 hover:underline"
+                          aria-label={`Open ${link.title}`}
                         >
                           <span className="truncate">{link.url}</span>
                           <ExternalLink className="size-3.5 shrink-0" />
                         </a>
                       )}
                     </TableCell>
-                    {canManage && (
+                    {canEdit && (
                       <TableCell>
                         <Button
                           variant="ghost"

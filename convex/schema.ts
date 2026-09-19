@@ -33,6 +33,17 @@ export const shotStatus = v.union(
   v.literal("killed"),
 );
 
+/**
+ * Pre-production elements (v2 item b). Only "character" has a UI in
+ * v1.1.0-pilot.2; "location" and "script" are reserved so the code prefixes
+ * (LOC_, SCR_) and the table shape do not change when they arrive.
+ */
+export const elementKind = v.union(
+  v.literal("character"),
+  v.literal("location"),
+  v.literal("script"),
+);
+
 export default defineSchema({
   ...authTables, // users, sessions, accounts… managed by Convex Auth
 
@@ -131,7 +142,32 @@ export default defineSchema({
     order: v.number(),
     figmaUrl: v.optional(v.string()), // storyboard lives in Figma
     description: v.optional(v.string()),
-  }).index("by_production", ["productionId"]),
+  })
+    .index("by_production", ["productionId"])
+    // Scene codes are unique per production since v2 (item d: importRows
+    // matches scenes by code; scenes.create/update and importRows enforce it
+    // with this index — nothing did before, so restored old data may carry
+    // duplicates: readers take the first by order and warn).
+    .index("by_production_code", ["productionId", "code"]),
+
+  // Pre-production elements (v2 item b): characters now, locations and
+  // scripts later. Each phase ("slot") of an element is a `shots` row that
+  // carries `elementId` + `slot`, so uploads, Options, the one-pick
+  // invariant, the Review Room, comments, history, the ledger and
+  // notifications work unchanged. Slot shots have no scene/episode and are
+  // excluded from every ordinary shot list by default.
+  elements: defineTable({
+    productionId: v.id("productions"),
+    kind: elementKind,
+    name: v.string(), // ≤ 120, duplicates allowed
+    code: v.string(), // A–Z0–9_ ≤ 32, unique per production + kind
+    description: v.optional(v.string()), // ≤ 2000
+    basePrompt: v.optional(v.string()), // ≤ 4000 — the sheet's "Prompt" column
+    order: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_production", ["productionId"])
+    .index("by_production_kind_code", ["productionId", "kind", "code"]),
 
   shots: defineTable({
     productionId: v.id("productions"),
@@ -154,6 +190,15 @@ export default defineSchema({
     // because rows written before the denormalisation have no value yet and
     // readers default it to 0.
     versionsCount: v.optional(v.number()),
+    // Element slot (v2 item b): set together on a "slot shot" — one row per
+    // phase of a character/location/script (slot = "concept" | "animation",
+    // see SLOTS_BY_KIND in lib/domain.ts). Both absent on an ordinary shot.
+    elementId: v.optional(v.id("elements")),
+    slot: v.optional(v.string()),
+    // Rename trail (v2 item e): shots.rename appends the previous code here,
+    // oldest first. The heading shows "formerly {last}"; comments and
+    // activity summaries keep the old text verbatim.
+    formerCodes: v.optional(v.array(v.string())),
   })
     .index("by_production", ["productionId"])
     .index("by_production_status", ["productionId", "status"])
@@ -163,7 +208,10 @@ export default defineSchema({
     .index("by_production_code", ["productionId", "code"])
     .index("by_production_order", ["productionId", "order"])
     .index("by_scene", ["sceneId"])
-    .index("by_assignee", ["assigneeId"]),
+    .index("by_assignee", ["assigneeId"])
+    // An element's slot shots (elements.list/get/update/remove) — a handful
+    // of rows per element, never a production scan.
+    .index("by_element", ["elementId"]),
 
   versions: defineTable({
     shotId: v.id("shots"),
@@ -192,7 +240,12 @@ export default defineSchema({
     decisionNote: v.optional(v.string()),
   })
     .index("by_shot", ["shotId"])
-    .index("by_production_status", ["productionId", "status"]),
+    .index("by_production_status", ["productionId", "status"])
+    // Provenance export (v2 item c): exports.provenanceRows paginates a
+    // production's versions newest-first (`.order("desc")` walks
+    // _creationTime within the productionId prefix) in pages of ≤ 400, so
+    // the per-row enrichment stays under the 4,096-document read ceiling.
+    .index("by_production", ["productionId"]),
 
   assets: defineTable({
     productionId: v.id("productions"),

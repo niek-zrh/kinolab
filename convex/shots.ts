@@ -12,7 +12,13 @@ import {
 } from "./lib/permissions";
 import { actorName, logActivity } from "./lib/activity";
 import { notify } from "./lib/notify";
-import { SHOT_STATUS_BY_KEY, STAGE_BY_KEY } from "./lib/domain";
+import {
+  ELEMENT_SLOT_STAGE,
+  isReservedCode,
+  SHOT_STATUS_BY_KEY,
+  STAGE_BY_KEY,
+} from "./lib/domain";
+import { createSceneRow, findSceneByCode, normalizeSceneCode } from "./scenes";
 
 /** Enriched user shape shared across returns (CONTRACTS "UserRef"). */
 type UserRef = { _id: Id<"users">; name: string; image?: string };
@@ -149,9 +155,16 @@ export const list = query({
     sceneId: v.optional(v.string()),
     assigneeId: v.optional(v.string()),
     episodeId: v.optional(v.string()),
+    // v2 item b: element slot shots (elementId set) are dropped by default so
+    // the Shots page, Board, Overview and every older caller never see
+    // characters; "only" is the Review queue's Characters group.
+    elements: v.optional(
+      v.union(v.literal("exclude"), v.literal("only"), v.literal("all")),
+    ),
   },
   handler: async (ctx, args) => {
     await assertMemberForProduction(ctx, args.productionId);
+    const elements = args.elements ?? "exclude";
     let sceneId: Id<"scenes"> | undefined;
     if (args.sceneId !== undefined) {
       const normalized = ctx.db.normalizeId("scenes", args.sceneId);
@@ -187,6 +200,8 @@ export const list = query({
 
     const shots: Doc<"shots">[] = [];
     for await (const shot of stream) {
+      if (elements === "exclude" && shot.elementId !== undefined) continue;
+      if (elements === "only" && shot.elementId === undefined) continue;
       if (stage !== undefined && shot.stage !== stage) continue;
       if (sceneId !== undefined && shot.sceneId !== sceneId) continue;
       if (assigneeId !== undefined && shot.assigneeId !== assigneeId) continue;
@@ -231,6 +246,121 @@ export const get = query({
   },
 });
 
+/**
+ * Validate and insert ONE shot row — the single write path behind
+ * shots.create, shots.importRows (v2 item d) and the element slot shots that
+ * elements.ts creates (v2 item b). Applies the code/title caps, the
+ * reserved-prefix rule, the scene / episode / assignee / due-date checks, the
+ * per-production uniqueness lookup and the `order` assignment. Writes NO
+ * activity row: every mutation logs its own (CONTRACTS rule 1), and batch
+ * callers log one row for the whole batch.
+ *
+ * - `elementId` + `slot` (always together) mark a slot shot. Its code is one
+ *   of the reserved CH_/LOC_/SCR_ codes (see `slotShotCode`), it never has a
+ *   scene or episode, and `stage` defaults to ELEMENT_SLOT_STAGE.
+ * - An ordinary shot (no `elementId`) is refused a reserved code — those
+ *   belong to Characters.
+ * - `order` may be supplied by batch callers that read `lastOrder` once and
+ *   count up; otherwise it is lastOrder + 1 (one indexed read).
+ * - `studioId` is the production's studio (from assertCanForProduction);
+ *   passed in so the assignee membership check costs no extra read.
+ *
+ * Returns the new id with the normalised (trimmed, uppercased) code.
+ */
+export async function createShotRow(
+  ctx: MutationCtx,
+  args: {
+    productionId: Id<"productions">;
+    studioId: Id<"studios">;
+    code: string;
+    title?: string;
+    sceneId?: Id<"scenes">;
+    episodeId?: Id<"episodes">;
+    stage?: Doc<"shots">["stage"];
+    assigneeId?: Id<"users">;
+    dueDate?: string;
+    elementId?: Id<"elements">;
+    slot?: string;
+    order?: number;
+  },
+): Promise<{ shotId: Id<"shots">; code: string }> {
+  const code = args.code.trim().toUpperCase();
+  if (code.length === 0) throw new ConvexError("Shot code is required");
+  if (code.length > MAX_CODE_LENGTH)
+    throw new ConvexError(
+      `Shot code is too long — keep it to ${MAX_CODE_LENGTH} characters`,
+    );
+  if (args.title !== undefined && args.title.length > MAX_TITLE_LENGTH)
+    throw new ConvexError(
+      `Shot title is too long — keep it to ${MAX_TITLE_LENGTH} characters`,
+    );
+  if (args.elementId === undefined && isReservedCode(code))
+    throw new ConvexError(reservedCodeMessage(code));
+  if (args.elementId !== undefined) {
+    if (args.slot === undefined)
+      throw new ConvexError("An element shot needs a slot");
+    if (args.sceneId !== undefined || args.episodeId !== undefined)
+      throw new ConvexError(
+        "Character slots don't belong to a scene or episode",
+      );
+    const element = await ctx.db.get(args.elementId);
+    if (!element || element.productionId !== args.productionId)
+      throw new ConvexError("Element not found in this production");
+  } else if (args.slot !== undefined) {
+    throw new ConvexError("Only element shots have a slot");
+  }
+  if (args.sceneId !== undefined) {
+    const scene = await ctx.db.get(args.sceneId);
+    if (!scene || scene.productionId !== args.productionId)
+      throw new ConvexError("Scene not found in this production");
+  }
+  if (args.episodeId !== undefined) {
+    const episode = await ctx.db.get(args.episodeId);
+    if (!episode || episode.productionId !== args.productionId)
+      throw new ConvexError("Episode not found in this production");
+  }
+  if (args.assigneeId !== undefined) {
+    const membership = await getMembership(
+      ctx,
+      args.studioId,
+      args.assigneeId,
+    );
+    if (!membership)
+      throw new ConvexError("Assignee is not a member of this studio");
+  }
+  if (args.dueDate !== undefined && !DATE_RE.test(args.dueDate))
+    throw new ConvexError("Due date must be YYYY-MM-DD");
+  // Indexed lookups, not a collect of the production: at a few thousand
+  // shots the scan alone exceeded Convex's read ceiling.
+  const duplicate = await ctx.db
+    .query("shots")
+    .withIndex("by_production_code", (q) =>
+      q.eq("productionId", args.productionId).eq("code", code),
+    )
+    .first();
+  if (duplicate !== null)
+    throw new ConvexError(`Shot code ${code} already exists in this production`);
+  const order = args.order ?? (await lastOrder(ctx, args.productionId)) + 1;
+  const shotId = await ctx.db.insert("shots", {
+    productionId: args.productionId,
+    code,
+    title: args.title,
+    sceneId: args.sceneId,
+    episodeId: args.episodeId,
+    status: "planned",
+    stage:
+      args.stage ??
+      (args.elementId !== undefined ? ELEMENT_SLOT_STAGE : "production"),
+    assigneeId: args.assigneeId,
+    dueDate: args.dueDate,
+    order,
+    versionsCount: 0, // denormalised; versions.ts keeps it current
+    elementId: args.elementId,
+    slot: args.slot,
+  });
+  return { shotId, code };
+}
+
 export const create = mutation({
   args: {
     productionId: v.id("productions"),
@@ -248,60 +378,9 @@ export const create = mutation({
       args.productionId,
       "content.edit",
     );
-    const code = args.code.trim().toUpperCase();
-    if (code.length === 0) throw new ConvexError("Shot code is required");
-    if (code.length > MAX_CODE_LENGTH)
-      throw new ConvexError(
-        `Shot code is too long — keep it to ${MAX_CODE_LENGTH} characters`,
-      );
-    if (args.title !== undefined && args.title.length > MAX_TITLE_LENGTH)
-      throw new ConvexError(
-        `Shot title is too long — keep it to ${MAX_TITLE_LENGTH} characters`,
-      );
-    if (args.sceneId !== undefined) {
-      const scene = await ctx.db.get(args.sceneId);
-      if (!scene || scene.productionId !== args.productionId)
-        throw new ConvexError("Scene not found in this production");
-    }
-    if (args.episodeId !== undefined) {
-      const episode = await ctx.db.get(args.episodeId);
-      if (!episode || episode.productionId !== args.productionId)
-        throw new ConvexError("Episode not found in this production");
-    }
-    if (args.assigneeId !== undefined) {
-      const membership = await getMembership(
-        ctx,
-        production.studioId,
-        args.assigneeId,
-      );
-      if (!membership)
-        throw new ConvexError("Assignee is not a member of this studio");
-    }
-    if (args.dueDate !== undefined && !DATE_RE.test(args.dueDate))
-      throw new ConvexError("Due date must be YYYY-MM-DD");
-    // Indexed lookups, not a collect of the production: at a few thousand
-    // shots the scan alone exceeded Convex's read ceiling.
-    const duplicate = await ctx.db
-      .query("shots")
-      .withIndex("by_production_code", (q) =>
-        q.eq("productionId", args.productionId).eq("code", code),
-      )
-      .first();
-    if (duplicate !== null)
-      throw new ConvexError(`Shot code ${code} already exists in this production`);
-    const order = (await lastOrder(ctx, args.productionId)) + 1;
-    const shotId = await ctx.db.insert("shots", {
-      productionId: args.productionId,
-      code,
-      title: args.title,
-      sceneId: args.sceneId,
-      episodeId: args.episodeId,
-      status: "planned",
-      stage: args.stage ?? "production",
-      assigneeId: args.assigneeId,
-      dueDate: args.dueDate,
-      order,
-      versionsCount: 0, // denormalised; versions.ts keeps it current
+    const { shotId, code } = await createShotRow(ctx, {
+      ...args,
+      studioId: production.studioId,
     });
     await logActivity(ctx, {
       productionId: args.productionId,
@@ -321,11 +400,416 @@ export const create = mutation({
  * and small enough that bulkRemove can undo the same batch in one call.
  */
 const MAX_BULK_SHOTS = 500;
+/** Scenes one import may create ("New scene" + unknown scene codes). */
+const MAX_IMPORT_SCENES = 100;
+/** Import rows: A–Z, 0–9, _ and - after trim + uppercase. */
+const IMPORT_CODE_RE = /^[A-Z0-9_-]+$/;
+
+const importRowValidator = v.object({
+  code: v.string(),
+  title: v.optional(v.string()),
+  sceneCode: v.optional(v.string()),
+  episodeNumber: v.optional(v.number()),
+  assigneeId: v.optional(v.id("users")),
+  dueDate: v.optional(v.string()),
+});
+
+const importDefaultsValidator = v.object({
+  sceneId: v.optional(v.id("scenes")),
+  episodeId: v.optional(v.id("episodes")),
+  stage: v.optional(stageKey),
+  assigneeId: v.optional(v.id("users")),
+  dueDate: v.optional(v.string()),
+});
+
+const importSceneValidator = v.object({
+  code: v.string(),
+  title: v.optional(v.string()),
+  episodeId: v.optional(v.id("episodes")),
+});
+
+type ImportRow = {
+  code: string;
+  title?: string;
+  sceneCode?: string;
+  episodeNumber?: number;
+  assigneeId?: Id<"users">;
+  dueDate?: string;
+};
+
+type ImportArgs = {
+  productionId: Id<"productions">;
+  rows: ImportRow[];
+  defaults?: {
+    sceneId?: Id<"scenes">;
+    episodeId?: Id<"episodes">;
+    stage?: Doc<"shots">["stage"];
+    assigneeId?: Id<"users">;
+    dueDate?: string;
+  };
+  scenesToCreate?: { code: string; title?: string; episodeId?: Id<"episodes"> }[];
+  createMissingScenes: boolean;
+};
+
+type ImportResult = {
+  created: number;
+  skipped: string[];
+  invalid: { code: string; reason: string }[];
+  scenesCreated: string[];
+  sceneId?: Id<"scenes">;
+};
+
+/** The reserved-prefix refusal, worded per prefix (CONTRACTS §shots.ts). */
+function reservedCodeMessage(code: string): string {
+  const prefix = code.slice(0, code.indexOf("_") + 1);
+  return prefix === "CH_"
+    ? "CH_ codes are reserved for characters — create it under Characters"
+    : `${prefix} codes are reserved for pre-production elements`;
+}
 
 /**
- * One code per array entry (the client splits the pasted text). Trims,
- * uppercases, dedupes, skips codes already in the production. ONE activity
- * row for the whole batch.
+ * THE batch create path (v2 item d) behind shots.importRows and the deprecated
+ * bulkCreate alias. Structural problems throw (row / scene caps, defaults that
+ * don't belong to the production); per-row problems come back in `invalid`
+ * and never fail the batch; codes already taken come back in `skipped`.
+ *
+ * Reads are bounded: episodes are read once (≤ 200 per production),
+ * assignees / scenes are memoised per distinct value, and each created row
+ * costs createShotRow's validation reads (≤ 4) plus one insert — 500 rows
+ * stay under the 4,096-document ceiling. `lastOrder` is read once and
+ * counted up. ONE activity row for the whole batch and one aggregated
+ * `shot_assigned` notification per assignee (never for the actor).
+ */
+async function importRowsImpl(
+  ctx: MutationCtx,
+  args: ImportArgs,
+): Promise<ImportResult> {
+  const { userId, production } = await assertCanForProduction(
+    ctx,
+    args.productionId,
+    "content.edit",
+  );
+  if (args.rows.length > MAX_BULK_SHOTS)
+    throw new ConvexError(
+      `That's ${args.rows.length} rows — paste at most ${MAX_BULK_SHOTS} at a time`,
+    );
+  const scenesToCreate = args.scenesToCreate ?? [];
+  if (scenesToCreate.length > MAX_IMPORT_SCENES)
+    throw new ConvexError(
+      `That's ${scenesToCreate.length} scenes — create at most ${MAX_IMPORT_SCENES} in one import`,
+    );
+
+  // Defaults come from the dialog's own selects: a bad one is a bug, not a
+  // row problem, so it fails the call.
+  const defaults = args.defaults ?? {};
+  if (defaults.sceneId !== undefined) {
+    const scene = await ctx.db.get(defaults.sceneId);
+    if (!scene || scene.productionId !== args.productionId)
+      throw new ConvexError("Scene not found in this production");
+  }
+  if (defaults.episodeId !== undefined) {
+    const episode = await ctx.db.get(defaults.episodeId);
+    if (!episode || episode.productionId !== args.productionId)
+      throw new ConvexError("Episode not found in this production");
+  }
+  if (defaults.assigneeId !== undefined) {
+    const membership = await getMembership(
+      ctx,
+      production.studioId,
+      defaults.assigneeId,
+    );
+    if (!membership)
+      throw new ConvexError("Assignee is not a member of this studio");
+  }
+  if (defaults.dueDate !== undefined && !DATE_RE.test(defaults.dueDate))
+    throw new ConvexError("Due date must be YYYY-MM-DD");
+
+  // Episodes by number — one bounded read (productions cap episodeCount).
+  const episodesByNumber = new Map<number, Doc<"episodes">>();
+  for await (const episode of ctx.db
+    .query("episodes")
+    .withIndex("by_production", (q) =>
+      q.eq("productionId", args.productionId),
+    )) {
+    episodesByNumber.set(episode.number, episode);
+  }
+
+  // Scenes by code, memoised; `null` = known not to exist.
+  const sceneByCode = new Map<string, Doc<"scenes"> | null>();
+  const resolveScene = async (
+    code: string,
+  ): Promise<Doc<"scenes"> | null> => {
+    const cached = sceneByCode.get(code);
+    if (cached !== undefined) return cached;
+    const scene = await findSceneByCode(ctx, args.productionId, code);
+    sceneByCode.set(code, scene);
+    return scene;
+  };
+  const scenesCreated: string[] = [];
+  let sceneOrder: number | null = null; // read lazily, only when creating
+  const createScene = async (input: {
+    code: string;
+    title?: string;
+    episodeId?: Id<"episodes">;
+  }): Promise<Doc<"scenes">> => {
+    if (scenesCreated.length >= MAX_IMPORT_SCENES)
+      throw new ConvexError(
+        `This import would create more than ${MAX_IMPORT_SCENES} scenes — split it up`,
+      );
+    if (sceneOrder === null) {
+      // Same bounded scan scenes.create uses, done once per import.
+      let max = 0;
+      let scanned = 0;
+      for await (const scene of ctx.db
+        .query("scenes")
+        .withIndex("by_production", (q) =>
+          q.eq("productionId", args.productionId),
+        )) {
+        if (scene.order > max) max = scene.order;
+        scanned += 1;
+        if (scanned >= 500) break;
+      }
+      sceneOrder = max;
+    }
+    sceneOrder += 1;
+    const { sceneId, code } = await createSceneRow(ctx, {
+      productionId: args.productionId,
+      code: input.code,
+      title: input.title,
+      episodeId: input.episodeId,
+      order: sceneOrder,
+    });
+    const scene = await ctx.db.get(sceneId);
+    if (!scene) throw new ConvexError("Scene could not be created");
+    sceneByCode.set(code, scene);
+    scenesCreated.push(code);
+    return scene;
+  };
+
+  // Explicit scenes first ("New scene" in the Generate tab). An existing code
+  // is used as is — the dialog may race another editor creating it.
+  for (const input of scenesToCreate) {
+    const code = normalizeSceneCode(input.code);
+    if (code.length === 0) throw new ConvexError("Scene code is required");
+    if (input.episodeId !== undefined) {
+      const episode = await ctx.db.get(input.episodeId);
+      if (!episode || episode.productionId !== args.productionId)
+        throw new ConvexError("Episode not found in this production");
+    }
+    if ((await resolveScene(code)) === null) await createScene(input);
+  }
+
+  // Assignee membership, memoised per distinct id.
+  const assigneeKnown = new Map<string, boolean>();
+  const assigneeIsMember = async (id: Id<"users">): Promise<boolean> => {
+    const cached = assigneeKnown.get(id);
+    if (cached !== undefined) return cached;
+    const membership = await getMembership(ctx, production.studioId, id);
+    assigneeKnown.set(id, membership !== null);
+    return membership !== null;
+  };
+  if (defaults.assigneeId !== undefined)
+    assigneeKnown.set(defaults.assigneeId, true);
+
+  const taken = new Set<string>();
+  const skipped: string[] = [];
+  const invalid: { code: string; reason: string }[] = [];
+  const scenesInvolved = new Set<Id<"scenes">>();
+  const assignedShots = new Map<
+    string,
+    { assigneeId: Id<"users">; shotIds: Id<"shots">[]; codes: string[] }
+  >();
+  let order = await lastOrder(ctx, args.productionId);
+  let created = 0;
+
+  for (const row of args.rows) {
+    const code = row.code.trim().toUpperCase();
+    const fail = (reason: string) => {
+      invalid.push({ code: code || row.code, reason });
+    };
+    if (code.length === 0) {
+      fail("Shot code is required");
+      continue;
+    }
+    if (code.length > MAX_CODE_LENGTH) {
+      fail(`Shot code is too long — keep it to ${MAX_CODE_LENGTH} characters`);
+      continue;
+    }
+    if (isReservedCode(code)) {
+      fail(reservedCodeMessage(code));
+      continue;
+    }
+    if (!IMPORT_CODE_RE.test(code)) {
+      fail("Shot codes use A–Z, 0–9, _ and - only");
+      continue;
+    }
+    const title =
+      row.title !== undefined && row.title.trim().length > 0
+        ? row.title.trim()
+        : undefined;
+    if (title !== undefined && title.length > MAX_TITLE_LENGTH) {
+      fail(`Shot title is too long — keep it to ${MAX_TITLE_LENGTH} characters`);
+      continue;
+    }
+    // Episode: the row's number, else the scene's, else the default.
+    let episodeId = defaults.episodeId;
+    let rowEpisodeId: Id<"episodes"> | undefined;
+    if (row.episodeNumber !== undefined) {
+      const episode = episodesByNumber.get(row.episodeNumber);
+      if (!episode) {
+        fail(`Unknown episode ${row.episodeNumber}`);
+        continue;
+      }
+      rowEpisodeId = episode._id;
+      episodeId = episode._id;
+    }
+    // Scene: the row's code (existing, or created when allowed), else the
+    // default.
+    let sceneId = defaults.sceneId;
+    const sceneCode =
+      row.sceneCode !== undefined ? normalizeSceneCode(row.sceneCode) : "";
+    if (sceneCode.length > 0) {
+      let scene = await resolveScene(sceneCode);
+      if (scene === null) {
+        if (!args.createMissingScenes) {
+          fail(`Unknown scene ${sceneCode}`);
+          continue;
+        }
+        scene = await createScene({
+          code: sceneCode,
+          episodeId: rowEpisodeId ?? defaults.episodeId,
+        });
+      }
+      sceneId = scene._id;
+      if (rowEpisodeId === undefined && scene.episodeId !== undefined)
+        episodeId = scene.episodeId;
+    }
+    const assigneeId = row.assigneeId ?? defaults.assigneeId;
+    if (assigneeId !== undefined && !(await assigneeIsMember(assigneeId))) {
+      fail("Assignee is not a member of this studio");
+      continue;
+    }
+    const dueDate = row.dueDate ?? defaults.dueDate;
+    if (dueDate !== undefined && !DATE_RE.test(dueDate)) {
+      fail("Due date must be YYYY-MM-DD");
+      continue;
+    }
+    if (sceneId !== undefined) scenesInvolved.add(sceneId);
+    if (taken.has(code)) {
+      skipped.push(code);
+      continue;
+    }
+    const duplicate = await ctx.db
+      .query("shots")
+      .withIndex("by_production_code", (q) =>
+        q.eq("productionId", args.productionId).eq("code", code),
+      )
+      .first();
+    if (duplicate !== null) {
+      skipped.push(code);
+      taken.add(code);
+      continue;
+    }
+    taken.add(code);
+    order += 1;
+    const { shotId } = await createShotRow(ctx, {
+      productionId: args.productionId,
+      studioId: production.studioId,
+      code,
+      title,
+      sceneId,
+      episodeId,
+      stage: defaults.stage,
+      assigneeId,
+      dueDate,
+      order,
+    });
+    created += 1;
+    if (assigneeId !== undefined && assigneeId !== userId) {
+      const entry = assignedShots.get(assigneeId) ?? {
+        assigneeId,
+        shotIds: [],
+        codes: [],
+      };
+      entry.shotIds.push(shotId);
+      entry.codes.push(code);
+      assignedShots.set(assigneeId, entry);
+    }
+  }
+
+  if (created > 0 || scenesCreated.length > 0) {
+    const actor = await actorName(ctx, userId);
+    const shotsPart = `${created} shot${created === 1 ? "" : "s"}`;
+    const summary =
+      scenesCreated.length === 0
+        ? `${actor} created ${shotsPart}`
+        : scenesCreated.length === 1
+          ? `${actor} created scene ${scenesCreated[0]} and ${shotsPart}`
+          : `${actor} created ${scenesCreated.length} scenes and ${shotsPart}`;
+    await logActivity(ctx, {
+      productionId: args.productionId,
+      actorId: userId,
+      type: "shot.created",
+      targetType: "production",
+      targetId: args.productionId,
+      summary,
+      data: { created, skipped, invalid, scenesCreated },
+    });
+    for (const entry of assignedShots.values()) {
+      const n = entry.shotIds.length;
+      await notify(ctx, {
+        userId: entry.assigneeId,
+        actorId: userId,
+        productionId: args.productionId,
+        type: "shot_assigned",
+        title:
+          n === 1
+            ? `${actor} assigned you ${entry.codes[0]}`
+            : `${actor} assigned you ${n} shots`,
+        body:
+          n === 1
+            ? undefined
+            : entry.codes.slice(0, 5).join(", ") + (n > 5 ? ", …" : ""),
+        href:
+          n === 1
+            ? `/p/${args.productionId}/shots/${entry.shotIds[0]}`
+            : `/p/${args.productionId}/shots?assignee=${entry.assigneeId}`,
+      });
+    }
+  }
+
+  const sceneIds = [...scenesInvolved];
+  return {
+    created,
+    skipped,
+    invalid,
+    scenesCreated,
+    sceneId: sceneIds.length === 1 ? sceneIds[0] : undefined,
+  };
+}
+
+/**
+ * Batch create from the "New shots" dialog (Generate and Import tabs) —
+ * CONTRACTS §shots.ts `importRows`. See importRowsImpl for the rules.
+ */
+export const importRows = mutation({
+  args: {
+    productionId: v.id("productions"),
+    rows: v.array(importRowValidator),
+    defaults: v.optional(importDefaultsValidator),
+    scenesToCreate: v.optional(v.array(importSceneValidator)),
+    createMissingScenes: v.boolean(),
+  },
+  handler: async (ctx, args): Promise<ImportResult> => {
+    return await importRowsImpl(ctx, args);
+  },
+});
+
+/**
+ * DEPRECATED (v2): kept one release as an alias of importRows for callers
+ * still passing `{ productionId, codes, sceneId?, episodeId? }`. Keeps the
+ * old contract of refusing the whole paste on a bad code (the mutation rolls
+ * back, so nothing is written) and returns `{ created, skipped }`.
  */
 export const bulkCreate = mutation({
   args: {
@@ -335,85 +819,21 @@ export const bulkCreate = mutation({
     episodeId: v.optional(v.id("episodes")),
   },
   handler: async (ctx, args) => {
-    const { userId } = await assertCanForProduction(
-      ctx,
-      args.productionId,
-      "content.edit",
-    );
     if (args.codes.length > MAX_BULK_SHOTS)
       throw new ConvexError(
         `That's ${args.codes.length} shots — paste at most ${MAX_BULK_SHOTS} at a time`,
       );
-    // Validated before anything is written so one bad line can't leave half a
-    // paste behind (the mutation would roll back anyway, but the message
-    // should name what to fix).
-    for (const raw of args.codes) {
-      if (raw.trim().length > MAX_CODE_LENGTH)
-        throw new ConvexError(
-          `Shot code "${raw.trim().slice(0, 20)}…" is too long — keep codes to ${MAX_CODE_LENGTH} characters`,
-        );
-    }
-    if (args.sceneId !== undefined) {
-      const scene = await ctx.db.get(args.sceneId);
-      if (!scene || scene.productionId !== args.productionId)
-        throw new ConvexError("Scene not found in this production");
-    }
-    if (args.episodeId !== undefined) {
-      const episode = await ctx.db.get(args.episodeId);
-      if (!episode || episode.productionId !== args.productionId)
-        throw new ConvexError("Episode not found in this production");
-    }
-    // `taken` only has to catch duplicates inside this batch — codes already
-    // in the production are found with one indexed lookup each, which keeps
-    // this off the collect-the-whole-production path.
-    const taken = new Set<string>();
-    let order = await lastOrder(ctx, args.productionId);
-    let created = 0;
-    const skipped: string[] = [];
-    for (const raw of args.codes) {
-      const code = raw.trim().toUpperCase();
-      if (code.length === 0) continue;
-      if (taken.has(code)) {
-        skipped.push(code);
-        continue;
-      }
-      const duplicate = await ctx.db
-        .query("shots")
-        .withIndex("by_production_code", (q) =>
-          q.eq("productionId", args.productionId).eq("code", code),
-        )
-        .first();
-      if (duplicate !== null) {
-        skipped.push(code);
-        taken.add(code);
-        continue;
-      }
-      taken.add(code);
-      order += 1;
-      await ctx.db.insert("shots", {
-        productionId: args.productionId,
-        code,
-        sceneId: args.sceneId,
-        episodeId: args.episodeId,
-        status: "planned",
-        stage: "production",
-        order,
-        versionsCount: 0, // denormalised; versions.ts keeps it current
-      });
-      created += 1;
-    }
-    if (created > 0) {
-      await logActivity(ctx, {
-        productionId: args.productionId,
-        actorId: userId,
-        type: "shot.created",
-        targetType: "production",
-        targetId: args.productionId,
-        summary: `${await actorName(ctx, userId)} created ${created} shot${created === 1 ? "" : "s"}`,
-        data: skipped.length > 0 ? { skipped } : undefined,
-      });
-    }
-    return { created, skipped };
+    const result = await importRowsImpl(ctx, {
+      productionId: args.productionId,
+      rows: args.codes
+        .filter((code) => code.trim().length > 0)
+        .map((code) => ({ code })),
+      defaults: { sceneId: args.sceneId, episodeId: args.episodeId },
+      createMissingScenes: false,
+    });
+    if (result.invalid.length > 0)
+      throw new ConvexError(result.invalid[0].reason);
+    return { created: result.created, skipped: result.skipped };
   },
 });
 
@@ -421,12 +841,13 @@ export const update = mutation({
   args: {
     shotId: v.id("shots"),
     title: v.optional(v.string()),
-    sceneId: v.optional(v.id("scenes")),
+    // null clears the scene / episode (v2 shot-header selects); an id sets it.
+    sceneId: v.optional(v.union(v.id("scenes"), v.null())),
     assigneeId: v.optional(v.id("users")),
     // null clears the due date; a string sets it (YYYY-MM-DD).
     dueDate: v.optional(v.union(v.string(), v.null())),
     order: v.optional(v.number()),
-    episodeId: v.optional(v.id("episodes")),
+    episodeId: v.optional(v.union(v.id("episodes"), v.null())),
   },
   handler: async (ctx, args) => {
     const shot = await ctx.db.get(args.shotId);
@@ -437,14 +858,22 @@ export const update = mutation({
     );
     if (!canEditShot(member, shot, userId))
       throw new PermissionError("You can't edit this shot");
+    // Slot shots (v2 item b) never belong to a scene or episode.
+    if (
+      shot.elementId !== undefined &&
+      (args.sceneId !== undefined || args.episodeId !== undefined)
+    )
+      throw new ConvexError(
+        "Character slots don't belong to a scene or episode",
+      );
 
     const patch: {
       title?: string;
-      sceneId?: Id<"scenes">;
+      sceneId?: Id<"scenes"> | undefined;
       assigneeId?: Id<"users">;
       dueDate?: string | undefined;
       order?: number;
-      episodeId?: Id<"episodes">;
+      episodeId?: Id<"episodes"> | undefined;
     } = {};
     const changes: string[] = [];
 
@@ -456,12 +885,21 @@ export const update = mutation({
       patch.title = args.title;
       changes.push(`title → "${args.title}"`);
     }
-    if (args.sceneId !== undefined && args.sceneId !== shot.sceneId) {
+    // Resolved before the episode block: choosing a scene sets the episode
+    // from the scene unless the call names one itself.
+    let episodeFromScene: Id<"episodes"> | undefined;
+    if (args.sceneId === null) {
+      if (shot.sceneId !== undefined) {
+        patch.sceneId = undefined; // explicit undefined removes the field
+        changes.push("scene cleared");
+      }
+    } else if (args.sceneId !== undefined && args.sceneId !== shot.sceneId) {
       const scene = await ctx.db.get(args.sceneId);
       if (!scene || scene.productionId !== shot.productionId)
         throw new ConvexError("Scene not found in this production");
       patch.sceneId = args.sceneId;
       changes.push(`scene → ${scene.code}`);
+      episodeFromScene = scene.episodeId;
     }
     let newAssigneeId: Id<"users"> | undefined;
     if (args.assigneeId !== undefined && args.assigneeId !== shot.assigneeId) {
@@ -495,12 +933,22 @@ export const update = mutation({
       patch.order = args.order;
       changes.push("order");
     }
-    if (args.episodeId !== undefined && args.episodeId !== shot.episodeId) {
-      const episode = await ctx.db.get(args.episodeId);
-      if (!episode || episode.productionId !== shot.productionId)
-        throw new ConvexError("Episode not found in this production");
-      patch.episodeId = args.episodeId;
-      changes.push(`episode → EP${String(episode.number).padStart(2, "0")}`);
+    if (args.episodeId === null) {
+      if (shot.episodeId !== undefined) {
+        patch.episodeId = undefined;
+        changes.push("episode cleared");
+      }
+    } else {
+      const nextEpisodeId = args.episodeId ?? episodeFromScene;
+      if (nextEpisodeId !== undefined && nextEpisodeId !== shot.episodeId) {
+        const episode = await ctx.db.get(nextEpisodeId);
+        if (!episode || episode.productionId !== shot.productionId)
+          throw new ConvexError("Episode not found in this production");
+        patch.episodeId = nextEpisodeId;
+        changes.push(
+          `episode → EP${String(episode.number).padStart(2, "0")}`,
+        );
+      }
     }
 
     if (changes.length === 0) return;
@@ -527,6 +975,66 @@ export const update = mutation({
         href: `/p/${shot.productionId}/shots/${shot._id}`,
       });
     }
+  },
+});
+
+/**
+ * Rename a shot's code (v2 item e). content.edit only — never the assigned
+ * artist. Refused on element slot shots (the character owns those codes), on
+ * delivered shots (the delivered filename is the record), and on reserved
+ * prefixes; unique per production; a no-op when unchanged. The old code goes
+ * onto `formerCodes` (oldest first). Comments and activity summaries keep the
+ * old text; the ledger, search and the Review Room read the live code; future
+ * picks use the new canonical name. Drive folders and already-filed Approved
+ * files are NOT renamed (Drive dormant; rename job parked). No notification.
+ * Returns the normalised new code.
+ */
+export const rename = mutation({
+  args: { shotId: v.id("shots"), code: v.string() },
+  handler: async (ctx, args) => {
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot) throw new ConvexError("Shot not found");
+    const { userId } = await assertCanForProduction(
+      ctx,
+      shot.productionId,
+      "content.edit",
+    );
+    if (shot.elementId !== undefined)
+      throw new ConvexError(
+        "This is a character slot — rename the character instead",
+      );
+    if (shot.status === "delivered")
+      throw new ConvexError("Delivered shots can't be renamed");
+    const code = args.code.trim().toUpperCase();
+    if (code.length === 0) throw new ConvexError("Shot code is required");
+    if (code.length > MAX_CODE_LENGTH)
+      throw new ConvexError(
+        `Shot code is too long — keep it to ${MAX_CODE_LENGTH} characters`,
+      );
+    if (isReservedCode(code)) throw new ConvexError(reservedCodeMessage(code));
+    if (code === shot.code) return code;
+    const duplicate = await ctx.db
+      .query("shots")
+      .withIndex("by_production_code", (q) =>
+        q.eq("productionId", shot.productionId).eq("code", code),
+      )
+      .first();
+    if (duplicate !== null)
+      throw new ConvexError(`Shot code ${code} already exists in this production`);
+    await ctx.db.patch(shot._id, {
+      code,
+      formerCodes: [...(shot.formerCodes ?? []), shot.code],
+    });
+    await logActivity(ctx, {
+      productionId: shot.productionId,
+      actorId: userId,
+      type: "shot.renamed",
+      targetType: "shot",
+      targetId: shot._id,
+      summary: `${await actorName(ctx, userId)} renamed ${shot.code} → ${code}`,
+      data: { from: shot.code, to: code },
+    });
+    return code;
   },
 });
 

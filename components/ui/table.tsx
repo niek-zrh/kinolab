@@ -23,7 +23,13 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      // Sticky against whichever ancestor scrolls (a bounded list, or the
+      // page when the container does not overflow); bg-card so the rows never
+      // show through the header in either theme.
+      className={cn(
+        "sticky top-0 z-10 bg-card [&_tr]:border-b [&_tr]:hover:bg-transparent",
+        className
+      )}
       {...props}
     />
   )
@@ -33,7 +39,12 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
   return (
     <tbody
       data-slot="table-body"
-      className={cn("[&_tr:last-child]:border-0", className)}
+      // Zebra at a quarter of muted: enough to guide the eye across a wide
+      // row on ink or paper, faint enough that hover (muted/50) still reads.
+      className={cn(
+        "[&_tr:last-child]:border-0 [&>tr:nth-child(even)]:bg-muted/25",
+        className
+      )}
       {...props}
     />
   )
