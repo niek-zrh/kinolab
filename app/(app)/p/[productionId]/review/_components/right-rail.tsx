@@ -59,7 +59,10 @@ export function RightRail({
   });
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-border bg-background">
+    <aside
+      aria-label="Version details"
+      className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-border bg-background"
+    >
       <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Focused version header */}
         <div className="border-b border-border px-4 py-3">

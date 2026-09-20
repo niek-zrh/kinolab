@@ -20,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ShotFrame } from "@/components/app/shot-frame";
 import { StatusPill } from "@/components/app/status-pill";
 import { UserAvatar } from "@/components/app/user-avatar";
 import {
@@ -137,11 +138,25 @@ export function ShotsTable({
             return (
               <TableRow key={shot._id}>
                 <TableCell>
+                  {/* The frame rides inside the code cell rather than in a
+                      column of its own — the table view is the default one,
+                      and it used to carry no image at all. */}
                   <Link
                     href={`/p/${productionId}/shots/${shot._id}`}
-                    className="font-mono text-xs font-medium hover:underline"
+                    className="group flex items-center gap-2.5"
                   >
-                    {shot.code}
+                    <span className="w-10 shrink-0 overflow-hidden rounded-[3px]">
+                      <ShotFrame
+                        code={shot.code}
+                        src={shot.coverThumbUrl}
+                        status={shot.status}
+                        size="sm"
+                        framed={false}
+                      />
+                    </span>
+                    <span className="font-mono text-xs font-medium group-hover:underline">
+                      {shot.code}
+                    </span>
                   </Link>
                 </TableCell>
                 <TableCell className="max-w-56">

@@ -3,11 +3,12 @@
 import type { Id } from "@/convex/_generated/dataModel";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { ShotFrame } from "@/components/app/shot-frame";
 import { SlateStrip } from "@/components/app/slate-strip";
 import { UserAvatar } from "@/components/app/user-avatar";
 import type { ShotRow } from "./shots-common";
 
-/** Grid view: cover thumb (or mono-code placeholder), slate strip, title, assignee. */
+/** Grid view: slate strip, the frame (cover or unexposed stock), title, assignee. */
 export function ShotsGrid({
   shots,
   productionId,
@@ -24,19 +25,11 @@ export function ShotsGrid({
             className="h-full gap-0 p-0 transition-shadow duration-150 hover:shadow-md"
           >
             <SlateStrip code={shot.code} status={shot.status} />
-            {shot.coverThumbUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={shot.coverThumbUrl}
-                alt={shot.code}
-                className="thumb-frame aspect-video w-full object-cover"
-                loading="lazy"
-              />
-            ) : (
-              <div className="thumb-frame flex aspect-video w-full items-center justify-center font-mono text-xs text-muted-foreground">
-                {shot.code}
-              </div>
-            )}
+            <ShotFrame
+              code={shot.code}
+              src={shot.coverThumbUrl}
+              status={shot.status}
+            />
             <div className="flex flex-1 items-center justify-between gap-2 px-3 py-2.5">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">

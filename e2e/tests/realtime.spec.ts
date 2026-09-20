@@ -12,6 +12,7 @@ import {
   trackErrors,
   uniqueEmail,
   uploadOptions,
+  bulkCreateShots,
 } from "./helpers";
 
 /**
@@ -91,30 +92,14 @@ async function createProductionResilient(
 }
 
 /**
- * Local fix for helpers.bulkCreateShots: the shared helper fills the first
- * textarea on the page, which races the empty-state inline form against the
- * "Paste codes" dialog (both match). Scope everything to the open dialog.
+ * Delegates to the shared helper. The local copy this replaces drove the
+ * pre-v2 "Paste codes" dialog / the inline empty-state form; "Paste codes"
+ * no longer exists, and the inline panel now opens on the Generate tab,
+ * where there is no "Shot codes" textarea — so both timed out in beforeAll
+ * and took every test in the file with them.
  */
 async function bulkCreateShotsSafe(page: Page, base: string, codes: string[]) {
-  await page.goto(`${base}/shots`);
-  const openButton = page.getByRole("button", { name: "Paste codes" });
-  try {
-    await openButton.waitFor({ timeout: 30_000 });
-  } catch {
-    await page.reload(); // recover from a mid-compile chunk error
-    await openButton.waitFor({ timeout: 30_000 });
-  }
-  await openButton.click();
-  const dialog = page.locator('[role="dialog"]');
-  await dialog.getByRole("textbox", { name: "Shot codes" }).fill(codes.join("\n"));
-  await dialog
-    .getByRole("button", { name: new RegExp(`^Create ${codes.length} shots?$`) })
-    .click();
-  // Wait for the modal to fully close so its overlay can't swallow clicks.
-  await expect(dialog).toHaveCount(0, { timeout: 10_000 });
-  await expect(page.getByText(codes[codes.length - 1]).first()).toBeVisible({
-    timeout: 15_000,
-  });
+  await bulkCreateShots(page, base, codes);
 }
 
 /**

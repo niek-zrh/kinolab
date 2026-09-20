@@ -12,8 +12,8 @@ Built on Next.js 15 + Convex (realtime) + Tailwind v4 + shadcn/ui.
 Spec: `stravi-pilot-mega-prompt.md` · second-round brief: `docs/SPEC-v2.md` ·
 decisions log: [DECISIONS.md](DECISIONS.md) ·
 backend API contract: [docs/CONTRACTS.md](docs/CONTRACTS.md) · plan: [PLAN.md](PLAN.md).
-Current version: **1.1.0-pilot.2** — what changed is in
-§What changed in v1.1.0-pilot.2.
+Current version: **1.2.0-pilot.1** — what changed is in
+§What changed in v1.2.0-pilot.1.
 
 ---
 
@@ -102,6 +102,37 @@ collaboration — boards, review rooms and gate chips update live.
    > (renames, new revisions, trashed files).
 
 ---
+
+## What changed in v1.2.0-pilot.1 (visual pass)
+
+A design pass against kinolab.ai, asked for as "more visual help in the
+software". The brand system was already the site's (Archivo + Martian Mono,
+ink `#0b0d11`, tape `#ff6b2c`, warm paper) and is unchanged — this adds
+visual scaffolding on top of it. Decisions: DECISIONS.md §v1.2.
+
+- **Every frame slot shows a frame.** `components/app/shot-frame.tsx` draws
+  the cover when there is one and unexposed film stock when there is not —
+  sprocket perforations, viewfinder ticks and a tint carried from the shot's
+  status, seeded by its code so a grid varies instead of tiling. It replaces
+  five different "no image" treatments (a mono code, nothing at all, two
+  `ImageIcon`s and a `Film` icon). The Board in Cards mode now renders a
+  frame for every card; the Shots **table** — the default view, previously
+  imageless — gets a thumbnail in its code cell.
+- **The Overview opens with the production's numbers and its picked frames**
+  — a progress dial, shot / in-review / approved counts, a tape "need you"
+  chip, and a strip of the frames that have been picked.
+- **The stage strip is a pipeline**: per-stage shot counts, a progress fill,
+  and gate state in words (Open / Sign-off / Signed / Rejected). Segments
+  link to their own filtered shots.
+- **The rail carries live counts** — shots, the review queue, and approvals
+  waiting on you (in tape). Backed by a new `shots.counts` query that skips
+  enrichment, because the rail mounts on every production page.
+- **Empty states** set the message in foreground with the icon in a badge.
+
+Fixed while testing this (pre-existing, unrelated to the visuals): `board.spec.ts`'s
+`signUpResilient` waited for the studio switcher, which a brand-new account
+never sees — it lands on the create-studio screen — so every board test died
+in `beforeAll`.
 
 ## What changed in v1.1.0-pilot.2 (second tester round)
 
@@ -1039,8 +1070,8 @@ app/                  Next.js routes (App Router)
   (app)/              Shell: studio home, team, /new wizard, /p/[productionId]/*
                       (board, shots, shots/[shotId], characters, characters/[elementId],
                       review, review/[shotId], files, decisions, reports, qc, settings)
-components/app        Kinolab components (slate-strip, status-pill, shell, theme
-                      provider + appearance control, generation-details dialog…)
+components/app        Kinolab components (slate-strip, shot-frame, status-pill, shell,
+                      theme provider + appearance control, generation-details dialog…)
 components/ui         shadcn/ui primitives (Base UI generation)
 convex/               Backend: schema, auth, modules per docs/CONTRACTS.md
   elements.ts         characters (elements + slot shots), v1.1
@@ -1064,3 +1095,12 @@ writes one human-readable activity row; picks/approvals are immutable;
 tokens never reach a client. UI tokens for both themes (dark by default,
 light as a preference, the Review Room always dark) live in
 `app/globals.css` (spec §9, revised in v1.1 — see §Appearance).
+
+Visual language (spec §9.2, extended in the v1.2 pass — DECISIONS 2026-09-20):
+the **slate strip** bands every shot and version card, the **status hues** are
+fixed per shot status, and **every frame slot shows a frame** —
+`components/app/shot-frame.tsx` renders the cover when there is one and
+unexposed film stock (perforations, viewfinder ticks, a tint carried from the
+shot's status) when there is not, so no screen shows an empty grey rectangle.
+The **tape accent** is reserved for primary actions, Pick, unread markers and
+the marker for the stage the production is currently in.

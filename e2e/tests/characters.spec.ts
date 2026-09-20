@@ -207,7 +207,7 @@ async function reviewRoomHrefOnPage(): Promise<string> {
 
 /** The right rail's focused-version header in the Review Room. */
 function railVersion() {
-  return page.locator("aside span.font-mono").first();
+  return page.locator('aside[aria-label="Version details"] span.font-mono').first();
 }
 
 test.beforeAll(async ({ browser }) => {

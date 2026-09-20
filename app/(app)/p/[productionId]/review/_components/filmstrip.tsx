@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Film } from "lucide-react";
+import { SlateFill } from "@/components/app/shot-frame";
 import { cn } from "@/lib/utils";
 import {
   isImageVersion,
@@ -71,9 +71,7 @@ export function Filmstrip({
                   )}
                 />
               ) : (
-                <div className="flex size-full items-center justify-center text-muted-foreground">
-                  <Film className="size-4" />
-                </div>
+                <SlateFill code={`v${version.index}`} size="sm" />
               )}
               {/* Literal black/white on purpose: the Review Room is always dark (spec v2 §(a).3) and the badge sits over any image. */}
               <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1 font-mono text-[10px] leading-4 text-white">

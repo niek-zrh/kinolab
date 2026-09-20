@@ -12,6 +12,7 @@ import {
   trackErrors,
   uniqueEmail,
   uploadOptions,
+  bulkCreateShots,
 } from "./helpers";
 
 /**
@@ -63,20 +64,14 @@ async function inviteMemberLocal(page: Page, email: string, roleLabel: string) {
 }
 
 /**
- * Local copy of helpers.bulkCreateShots — the shared helper opens the
- * "Paste codes" modal but fills the inline empty-state textarea behind the
- * overlay, so its create click times out. See decisions.spec.ts for details.
+ * Delegates to the shared helper. The local copy this replaces drove the
+ * pre-v2 "Paste codes" dialog / the inline empty-state form; "Paste codes"
+ * no longer exists, and the inline panel now opens on the Generate tab,
+ * where there is no "Shot codes" textarea — so both timed out in beforeAll
+ * and took every test in the file with them.
  */
 async function bulkCreateShotsLocal(page: Page, base: string, codes: string[]) {
-  await page.goto(`${base}/shots`);
-  await page.getByLabel("Shot codes").first().fill(codes.join("\n"));
-  await page
-    .getByRole("button", { name: /^Create \d+ shots?$/ })
-    .first()
-    .click();
-  await expect(page.getByText(codes[codes.length - 1]).first()).toBeVisible({
-    timeout: 15_000,
-  });
+  await bulkCreateShots(page, base, codes);
 }
 
 /**

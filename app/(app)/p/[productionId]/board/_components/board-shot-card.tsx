@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ShotFrame } from "@/components/app/shot-frame";
 import { StatusPill, STATUS_VAR } from "@/components/app/status-pill";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { cn } from "@/lib/utils";
@@ -162,17 +163,17 @@ export function BoardShotCard({
         )}
       </div>
 
-      {showThumb && shot.coverThumbUrl ? (
-        <div className="thumb-frame aspect-video w-full border-x-0 border-t-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={shot.coverThumbUrl}
-            alt={`${shot.code} cover`}
-            className="size-full object-cover"
-            loading="lazy"
-            draggable={false}
-          />
-        </div>
+      {/* Cards mode always shows a frame — unexposed stock when there is no
+          cover yet, so a column of pending shots still reads as a shot list
+          and not as a stack of collapsed rows. */}
+      {showThumb ? (
+        <ShotFrame
+          code={shot.code}
+          src={shot.coverThumbUrl}
+          alt={`${shot.code} cover`}
+          status={shot.status}
+          className="border-x-0 border-t-0"
+        />
       ) : null}
 
       <div className="space-y-2 px-2.5 py-2">

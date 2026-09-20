@@ -7,10 +7,11 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, type ReactNode } from "react";
 import { formatInTimeZone } from "date-fns-tz";
-import { Clapperboard, ImageIcon } from "lucide-react";
+import { Clapperboard, Layers } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/app/empty-state";
+import { ShotFrame } from "@/components/app/shot-frame";
 import { SlateStrip } from "@/components/app/slate-strip";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { copy } from "@/lib/copy";
@@ -207,20 +208,27 @@ function QueueCard({
         )}
       >
         <SlateStrip code={shot.code} status={shot.status} />
-        <div className="relative aspect-video overflow-hidden border-b border-border bg-muted">
-          {shot.coverThumbUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={shot.coverThumbUrl}
-              alt={shot.code}
-              className="size-full object-cover"
-            />
-          ) : (
-            <div className="flex size-full items-center justify-center text-muted-foreground">
-              <ImageIcon className="size-6" />
-            </div>
-          )}
-        </div>
+        <ShotFrame
+          code={shot.code}
+          src={shot.coverThumbUrl}
+          status={shot.status}
+          framed={false}
+          className="border-b border-border"
+          overlay={
+            // Visual reinforcement only — the count is already in the footer
+            // below, so this is hidden from assistive tech rather than read
+            // out twice.
+            shot.versionsCount > 0 ? (
+              <span
+                aria-hidden
+                className="absolute bottom-1.5 right-1.5 flex items-center gap-1 rounded-sm bg-background/85 px-1.5 py-px font-mono text-[10px] text-foreground/80 backdrop-blur-sm"
+              >
+                <Layers className="size-3" />
+                {shot.versionsCount}
+              </span>
+            ) : null
+          }
+        />
         <div className="flex items-center justify-between gap-2 px-3 py-2.5">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">

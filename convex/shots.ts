@@ -221,6 +221,56 @@ export const list = query({
   },
 });
 
+/** A phase with a pick (or past it) has been decided — it leaves the queue. */
+const DECIDED_STATUSES = new Set<Doc<"shots">["status"]>([
+  "picked",
+  "approved",
+  "final",
+  "delivered",
+  "killed",
+]);
+
+/**
+ * Counts for the production rail's badges. Walks the same rows shots.list
+ * does, but skips enrichment entirely — no storage URL, user, scene or
+ * episode lookup per shot. The rail is mounted on every production page, so
+ * subscribing it to the enriched list would have put a cover-thumbnail
+ * lookup per shot behind a two-digit badge.
+ *
+ * `reviewQueue` is defined exactly as the Review page composes it (shots with
+ * options waiting + character phases nobody has decided on), so the badge and
+ * the page it points at can never disagree.
+ */
+export const counts = query({
+  args: { productionId: v.id("productions") },
+  handler: async (ctx, args) => {
+    await assertMemberForProduction(ctx, args.productionId);
+    const stream = ctx.db
+      .query("shots")
+      .withIndex("by_production", (q) =>
+        q.eq("productionId", args.productionId),
+      );
+
+    let scanned = 0;
+    let total = 0;
+    let reviewQueue = 0;
+    for await (const shot of stream) {
+      if (shot.elementId !== undefined) {
+        if ((shot.versionsCount ?? 0) > 0 && !DECIDED_STATUSES.has(shot.status)) {
+          reviewQueue++;
+        }
+      } else {
+        if (shot.status !== "killed") total++;
+        if (shot.status === "options_ready" || shot.status === "in_review") {
+          reviewQueue++;
+        }
+      }
+      if (++scanned >= MAX_LIST_SHOTS) break;
+    }
+    return { total, reviewQueue };
+  },
+});
+
 export const get = query({
   args: { shotId: v.id("shots") },
   handler: async (ctx, args) => {

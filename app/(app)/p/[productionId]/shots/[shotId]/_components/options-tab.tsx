@@ -7,10 +7,10 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   ExternalLink,
-  Film,
   GitCompare,
   ImageIcon,
   Pencil,
+  Play,
   Star,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/app/empty-state";
+import { ShotFrame } from "@/components/app/shot-frame";
 import {
   canEditGenerationDetails,
   GenerationDetailsDialog,
@@ -256,38 +257,24 @@ function VersionThumb({ version }: { version: VersionRow }) {
   const isVideo = asset?.mimeType?.startsWith("video/") ?? false;
   const alt = asset?.name ?? `v${version.index}`;
 
-  if (isVideo) {
-    return (
-      <div className="thumb-frame relative aspect-video w-full shrink-0 overflow-hidden bg-muted">
-        {asset?.thumbUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={asset.thumbUrl}
-            alt={alt}
-            className="absolute inset-0 size-full object-cover opacity-80"
-          />
-        )}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Film className="size-6 text-foreground/70" />
-        </div>
-      </div>
-    );
-  }
-
-  if (asset?.thumbUrl) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={asset.thumbUrl}
-        alt={alt}
-        className="thumb-frame aspect-video w-full shrink-0 object-cover"
-      />
-    );
-  }
-
   return (
-    <div className="flex aspect-video w-full shrink-0 items-center justify-center bg-muted">
-      <ImageIcon className="size-6 text-muted-foreground/60" />
-    </div>
+    <ShotFrame
+      code={`v${version.index}`}
+      src={asset?.thumbUrl}
+      alt={alt}
+      video={isVideo}
+      className="shrink-0"
+      overlay={
+        // A play badge rather than a bare icon: video and stills are told
+        // apart at a glance, with or without a poster frame.
+        isVideo ? (
+          <span className="absolute inset-0 flex items-center justify-center">
+            <span className="flex size-9 items-center justify-center rounded-full bg-background/70 ring-1 ring-foreground/15 backdrop-blur-sm">
+              <Play className="size-4 fill-foreground/80 text-foreground/80" />
+            </span>
+          </span>
+        ) : null
+      }
+    />
   );
 }

@@ -67,7 +67,25 @@ export function ProductionRail({
   const pathname = usePathname();
   const { studioId, setStudioId } = useStudio();
   const production = useQuery(api.productions.get, { productionId });
+  // Two cheap queries, deliberately: shots.counts skips enrichment and
+  // approvals.myPending is already subscribed by the Overview.
+  const counts = useQuery(api.shots.counts, { productionId });
+  const pending = useQuery(api.approvals.myPending, {});
   const base = `/p/${productionId}`;
+
+  const needsYou = (pending ?? []).filter(
+    (a) => a.productionId === productionId,
+  ).length;
+
+  /**
+   * Live badges on the rail: how much work sits behind a destination, and —
+   * in tape, the decision accent — how much of it is waiting on the person
+   * reading. Zero never renders; a badge means there is something there.
+   */
+  const badges: Record<string, { value: number; accent?: boolean }> = {};
+  if (counts?.total) badges["/shots"] = { value: counts.total };
+  if (counts?.reviewQueue) badges["/review"] = { value: counts.reviewQueue };
+  if (needsYou) badges["/decisions"] = { value: needsYou, accent: true };
 
   // Keep the active studio in sync with the production being viewed so
   // role-gated UI derives from the production's own studio.
@@ -105,19 +123,39 @@ export function ProductionRail({
                 ? pathname === href
                 : pathname.startsWith(href);
               const Icon = item.icon;
+              const badge = badges[item.href];
               return (
                 <Link
                   key={item.href}
                   href={href}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors duration-120",
+                    "relative flex items-center gap-2.5 rounded-md py-1.5 pl-2.5 pr-2 text-sm transition-colors duration-120",
                     active
                       ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                       : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
                   )}
                 >
+                  {/* Where am I: a solid edge marker, readable before colour. */}
+                  {active && (
+                    <span
+                      aria-hidden
+                      className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-foreground"
+                    />
+                  )}
                   <Icon className="size-4 shrink-0" />
-                  {item.label}
+                  <span className="min-w-0 truncate">{item.label}</span>
+                  {badge && (
+                    <span
+                      className={cn(
+                        "ml-auto shrink-0 rounded-full px-1.5 font-mono text-[10px] leading-4 tabular-nums",
+                        badge.accent
+                          ? "bg-tape text-tape-foreground font-medium"
+                          : "bg-sidebar-accent text-muted-foreground",
+                      )}
+                    >
+                      {badge.value}
+                    </span>
+                  )}
                 </Link>
               );
             })}

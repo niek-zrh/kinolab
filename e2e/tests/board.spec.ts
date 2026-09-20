@@ -67,7 +67,12 @@ async function waitForSignInHydration(page: Page) {
  * Hydration-safe sign-up with a sign-in fallback: under parallel-agent load
  * the auth roundtrip can outlive the wait even though the account was
  * created, or the first load after sign-up can land half-authenticated
- * (blank shell). Retry until the app shell's top bar is actually there.
+ * (blank shell). Retry until the signed-in app is actually there.
+ *
+ * "There" is EITHER the studio switcher OR the create-studio form: a brand
+ * new account has no studio, so the shell renders <CreateStudio /> and no
+ * switcher exists to wait for. Waiting only for the switcher meant a fresh
+ * sign-up could never succeed and every board test died in beforeAll.
  */
 async function signUpResilient(page: Page, name: string, email: string) {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -85,7 +90,8 @@ async function signUpResilient(page: Page, name: string, email: string) {
       // Fall through: the account may exist anyway — check by signing in.
     }
     const signedIn = await page
-      .getByLabel("Switch studio")
+      .locator('#studio-name, [aria-label="Switch studio"]')
+      .first()
       .waitFor({ state: "visible", timeout: 15_000 })
       .then(() => true)
       .catch(() => false);
@@ -95,7 +101,8 @@ async function signUpResilient(page: Page, name: string, email: string) {
     await page.goto("/", { waitUntil: "domcontentloaded" }).catch(() => {});
     if (
       await page
-        .getByLabel("Switch studio")
+        .locator('#studio-name, [aria-label="Switch studio"]')
+        .first()
         .waitFor({ state: "visible", timeout: 10_000 })
         .then(() => true)
         .catch(() => false)
@@ -105,7 +112,8 @@ async function signUpResilient(page: Page, name: string, email: string) {
       await signIn(page, email);
       if (
         await page
-          .getByLabel("Switch studio")
+          .locator('#studio-name, [aria-label="Switch studio"]')
+          .first()
           .waitFor({ state: "visible", timeout: 10_000 })
           .then(() => true)
           .catch(() => false)

@@ -131,8 +131,11 @@ export async function bulkCreateShots(page: Page, base: string, codes: string[])
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("tab", { name: "Import" }).click();
   await dialog.getByLabel("Shot codes").fill(codes.join("\n"));
+  // The dialog keeps BOTH tab panels mounted, so /^Create \d+ shots?$/ also
+  // matches the Generate tab's disabled submit (strict-mode violation).
+  // Scope to the enabled one, which is the Import panel's.
   await dialog
-    .getByRole("button", { name: /^Create \d+ shots?$/ })
+    .getByRole("button", { name: /^Create \d+ shots?$/, disabled: false })
     .click();
   // Wait for the modal to fully close so its overlay can't swallow clicks.
   await dialog.waitFor({ state: "detached", timeout: 10_000 });

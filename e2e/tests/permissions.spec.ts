@@ -11,6 +11,7 @@ import {
   uploadOptions,
   uniqueEmail,
   PASSWORD,
+  bulkCreateShots,
 } from "./helpers";
 
 /**
@@ -20,22 +21,14 @@ import {
  */
 
 /**
- * Local copy of helpers.bulkCreateShots (shared helper fills the inline
- * empty-state textarea but clicks the dialog's disabled button — see the
- * helper-issue note in team.spec.ts). Uses the inline empty-state form.
+ * Delegates to the shared helper. The local copy this replaces drove the
+ * pre-v2 "Paste codes" dialog / the inline empty-state form; "Paste codes"
+ * no longer exists, and the inline panel now opens on the Generate tab,
+ * where there is no "Shot codes" textarea — so both timed out in beforeAll
+ * and took every test in the file with them.
  */
 async function bulkCreateShotsLocal(page: Page, base: string, codes: string[]) {
-  await page.goto(`${base}/shots`);
-  const textarea = page.getByLabel("Shot codes").first();
-  await textarea.fill(codes.join("\n"));
-  const noun = codes.length === 1 ? "shot" : "shots";
-  await page
-    .getByRole("button", { name: `Create ${codes.length} ${noun}` })
-    .first()
-    .click();
-  await expect(page.getByText(codes[codes.length - 1]).first()).toBeVisible({
-    timeout: 15_000,
-  });
+  await bulkCreateShots(page, base, codes);
 }
 
 /**

@@ -110,7 +110,9 @@
     --sidebar-accent-foreground: #16181d;
     --sidebar-border: #e5e1d8;
     --sidebar-ring: #ff6b2c;
-    /* Brand accent (kinolab.ai): primary actions, Pick, unread markers only. */
+    /* Brand accent (kinolab.ai): primary actions, Pick, unread markers, and
+       the one marker for the stage the production is in (DECISIONS
+       2026-09-20). Nothing else — it only carries weight while it stays rare. */
     --tape: #ff6b2c;
 
     /* Status hues on paper: deep enough to read as 12px pill text on their own

@@ -9,7 +9,6 @@ import { useRef, useState } from "react";
 import {
   ExternalLink,
   FileText,
-  ImageIcon,
   MonitorPlay,
   MoreHorizontal,
   Pencil,
@@ -32,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { SlateFill } from "@/components/app/shot-frame";
 import { StatusPill } from "@/components/app/status-pill";
 import {
   MAX_ELEMENT_BASE_PROMPT_LENGTH,
@@ -192,7 +192,9 @@ function SlotCell({
             loading="lazy"
           />
         ) : (
-          <ImageIcon className="size-4 text-muted-foreground/60" />
+          // Unexposed stock, same as every other empty frame — seeded by the
+          // character's code so each row's square is its own.
+          <SlateFill code={`${row.code}_${slot}`} status={view.status} size="sm" />
         )}
       </span>
       <span className="flex min-w-0 flex-col items-start gap-1">

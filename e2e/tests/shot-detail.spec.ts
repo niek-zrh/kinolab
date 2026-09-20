@@ -450,7 +450,7 @@ test.describe.serial("shot detail", () => {
     test.setTimeout(120_000);
     // A pick first, so the Decisions ledger has a row that names this shot.
     await page.goto(`${base}/review/${shotId}`);
-    await expect(page.locator("aside span.font-mono").first()).toHaveText(
+    await expect(page.locator('aside[aria-label="Version details"] span.font-mono').first()).toHaveText(
       /^v\d+$/,
       { timeout: 20_000 },
     );

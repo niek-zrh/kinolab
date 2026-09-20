@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import type { Id } from "@/convex/_generated/dataModel";
+import { OverviewVitals } from "./_components/overview-vitals";
 import { OverviewStageStrip } from "./_components/overview-stage-strip";
 import { OverviewShotSummary } from "./_components/overview-shot-summary";
 import { OverviewActivity } from "./_components/overview-activity";
@@ -21,9 +22,7 @@ export default function ProductionOverviewPage() {
   return (
     <main className="flex-1 px-6 py-6">
       <div className="mx-auto w-full max-w-6xl">
-        <h1 className="mb-4 font-display text-xl font-semibold tracking-tight">
-          Overview
-        </h1>
+        <OverviewVitals productionId={productionId} />
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-8">
             <OverviewStageStrip productionId={productionId} />
