@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, type ComponentType } from "react";
 import {
+  Brush,
   Columns3,
   FileText,
   Film,
@@ -38,6 +39,9 @@ type RailItem = {
 const GROUPS: { label?: string; items: RailItem[] }[] = [
   {
     items: [
+      // First on purpose: everyone else's screens answer "how is the
+      // production doing", this one answers "what is on me".
+      { href: "/my-work", label: copy.nav.myWork, icon: Brush },
       { href: "", label: copy.nav.overview, icon: LayoutDashboard, exact: true },
       { href: "/board", label: copy.nav.board, icon: Columns3 },
       { href: "/shots", label: copy.nav.shots, icon: Film },

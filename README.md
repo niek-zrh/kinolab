@@ -9,6 +9,8 @@ production reports, a TV-delivery QC checklist, and a provenance export of
 every prompt and decision.
 
 Built on Next.js 15 + Convex (realtime) + Tailwind v4 + shadcn/ui.
+**User manual (artists first, with screenshots): [docs/MANUAL.md](docs/MANUAL.md).**
+
 Spec: `stravi-pilot-mega-prompt.md` · second-round brief: `docs/SPEC-v2.md` ·
 decisions log: [DECISIONS.md](DECISIONS.md) ·
 backend API contract: [docs/CONTRACTS.md](docs/CONTRACTS.md) · plan: [PLAN.md](PLAN.md).
@@ -128,6 +130,12 @@ visual scaffolding on top of it. Decisions: DECISIONS.md §v1.2.
   waiting on you (in tape). Backed by a new `shots.counts` query that skips
   enrichment, because the rail mounts on every production page.
 - **Empty states** set the message in foreground with the icon in a badge.
+- **My work** (`/p/{id}/my-work`, first in the rail) — the artist's screen.
+  Assigned shots grouped by whose move it is: Needs you · In progress · With
+  review · Settled, character phases included.
+- **The compare canvas says what zoom it is at** — −/percentage/+/Fit, with
+  `−`, `=`/`+` and `0` on the keyboard, and a link to the original once you
+  zoom past what the cached preview can honestly show.
 
 Fixed while testing this (pre-existing, unrelated to the visuals): `board.spec.ts`'s
 `signUpResilient` waited for the studio switcher, which a brand-new account

@@ -20,6 +20,7 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
     keys: [
       ["N", "New shot"],
       ["/", "Search files"],
+      ["⌘V", "Paste an image onto a shot as an option"],
     ],
   },
   {
@@ -30,7 +31,8 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
       ["S", "Shortlist"],
       ["X", "Reject"],
       ["P", "Pick"],
-      ["0", "Reset zoom"],
+      ["0", "Fit to pane"],
+      ["− +", "Zoom out / in"],
       ["F", "Fullscreen"],
       ["Esc", "Back to queue"],
     ],

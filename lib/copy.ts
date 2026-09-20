@@ -7,6 +7,7 @@ export const copy = {
   tagline: "From forty generations to one approved shot.",
 
   nav: {
+    myWork: "My work",
     overview: "Overview",
     board: "Board",
     shots: "Shots",

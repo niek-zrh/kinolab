@@ -29,11 +29,13 @@ import { cn } from "@/lib/utils";
 import {
   CompareCanvas,
   IDENTITY_TRANSFORM,
+  zoomAboutCentre,
   type CanvasTransform,
 } from "./compare-canvas";
 import { DecisionActions, PickDialog, RejectDialog } from "./decision-dialogs";
 import { Filmstrip } from "./filmstrip";
 import { RightRail } from "./right-rail";
+import { ZoomHud } from "./zoom-hud";
 import {
   firstErrorLine,
   roleCanDecide,
@@ -218,6 +220,18 @@ export function ReviewRoom({
       "0": () => {
         if (!anyDialogOpen) setTransform(IDENTITY_TRANSFORM);
       },
+      "-": () => {
+        if (!anyDialogOpen) setTransform((t) => zoomAboutCentre(t, 1 / 1.25));
+      },
+      // "=" unshifted and "+" shifted are the same physical key; e.code is
+      // "Equal" for both, which bindingCandidates only resolves for letters
+      // and digits, so each character needs its own binding.
+      "=": () => {
+        if (!anyDialogOpen) setTransform((t) => zoomAboutCentre(t, 1.25));
+      },
+      "+": () => {
+        if (!anyDialogOpen) setTransform((t) => zoomAboutCentre(t, 1.25));
+      },
       "?": () => {
         if (!anyDialogOpen) setHintsOpen(true);
       },
@@ -340,7 +354,7 @@ export function ReviewRoom({
 
         {/* Center: compare canvas + right rail */}
         <div className="flex min-h-0 flex-1">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
             {loading ? (
               <div className="flex flex-1 items-center justify-center">
                 <Skeleton className="h-64 w-96 max-w-[80%]" />
@@ -363,6 +377,14 @@ export function ReviewRoom({
                   const i = versions.findIndex((v) => v._id === versionId);
                   if (i >= 0) setFocusIndex(i);
                 }}
+              />
+            )}
+            {/* Zoom readout + Fit, over the canvas (never over the filmstrip). */}
+            {!loading && count > 0 && (
+              <ZoomHud
+                transform={transform}
+                setTransform={setTransform}
+                originalUrl={focused?.asset?.fileUrl ?? null}
               />
             )}
           </div>
@@ -427,7 +449,8 @@ const HINTS: [string, string][] = [
   ["S", "Shortlist / unshortlist"],
   ["X", "Reject…"],
   ["P", "Pick…"],
-  ["0", "Reset zoom"],
+  ["0", "Fit to pane"],
+  ["− +", "Zoom out / in"],
   ["F", "Fullscreen"],
   ["Esc", "Back to queue"],
 ];

@@ -23,6 +23,24 @@ function clampScale(scale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
 }
 
+export const ZOOM_MIN = MIN_SCALE;
+export const ZOOM_MAX = MAX_SCALE;
+
+/**
+ * Zoom about the pane centre — what the buttons and the keyboard use, where
+ * there is no cursor to zoom toward. Same algebra as the wheel handler with
+ * the cursor offset at the origin, so `tx' = k·tx`.
+ */
+export function zoomAboutCentre(
+  t: CanvasTransform,
+  factor: number,
+): CanvasTransform {
+  const scale = clampScale(t.scale * factor);
+  if (scale === t.scale) return t;
+  const k = scale / t.scale;
+  return { scale, tx: k * t.tx, ty: k * t.ty };
+}
+
 /**
  * The compare canvas: 1–4 panes, one shared {scale, tx, ty} applied to every
  * pane so hand anatomy lines up across Midjourney options. Wheel zooms toward
