@@ -753,6 +753,100 @@ none of it has a safe default that guesses right.
      uploads stay attributed to the old identity — history is immutable by
      design, so this is a new person in the ledger, not a rename.
 
+## Moving file storage to another S3 provider
+
+The pilot already runs `--s3-storage`; the bytes just live in the MinIO on
+the pilot host. Moving them to another S3 provider changes the **endpoint**,
+not the storage type, so the "first boot decides the storage type" trap above
+does not apply — the database stays S3 and keeps its per-database prefix
+`kinolab-<uuid>/`. What has to be right is the object copy, the dialect
+switches, and having a way back.
+
+**All five buckets move together.** `kinolab-files` holds the uploads, but
+`kinolab-modules` holds the deployed functions — a backend pointed at an
+empty modules bucket serves no functions at all.
+
+**Dialect switches**, both in `deploy/.env` (defaults keep MinIO's
+behaviour — see `deploy/convex-backend.env.example`):
+
+| Provider | `KINOLAB_S3_FORCE_PATH_STYLE` | `KINOLAB_S3_DISABLE_SSE` | Trailing checksums |
+|---|---|---|---|
+| MinIO (today) | unset (`true`) | unset (`true`) | work — leave alone |
+| AWS S3 | `false` | `false` | work |
+| Cloudflare R2 | unset (`true`) | unset (`true`) | **rejected** — see below |
+| Backblaze B2 | unset (`true`) | unset (`true`) | **rejected** — see below |
+
+A provider that rejects trailing checksums needs a literal
+`AWS_S3_DISABLE_CHECKSUMS: "true"` line added to the backend service in
+`deploy/convex-backend.compose.yml`. It is deliberately not a variable: its
+*absence* is what MinIO needs, and compose cannot omit a variable it
+interpolates — an empty value is not the same as unset.
+
+### The cutover
+
+Nothing below destroys the MinIO copy, which is the whole rollback plan.
+Budget a short window: uploads and picks fail while the backend is down.
+
+```bash
+# 0. A fresh, complete backup FIRST — this is the only portable artifact.
+docker compose -f deploy/convex-backend.compose.yml exec kinolab-convex-backup \
+  npx convex export --include-file-storage --path /backups/pre-s3-move.zip
+
+# 1. Create the five buckets on the new provider, same names as today
+#    (keeping the names means S3_STORAGE_*_BUCKET stays untouched):
+#    kinolab-files  kinolab-modules  kinolab-search
+#    kinolab-exports  kinolab-snapshot-imports
+#    Versioning on for files; no object lock.
+
+# 2. First copy, with the backend still serving. Keys must land IDENTICALLY —
+#    no added prefix, or the per-database prefix stops matching and every
+#    file 404s. Mirror bucket-to-bucket, never into a subfolder.
+mc alias set old http://127.0.0.1:9000 "$OLD_KEY" "$OLD_SECRET"
+mc alias set new <endpoint> "$NEW_KEY" "$NEW_SECRET"
+for b in files modules search exports snapshot-imports; do
+  mc mirror --preserve old/kinolab-$b new/kinolab-$b
+done
+
+# 3. Stop the backend so nothing new is written mid-copy.
+docker compose -f deploy/convex-backend.compose.yml stop kinolab-convex-backend
+
+# 4. Catch up whatever landed during step 2.
+for b in files modules search exports snapshot-imports; do
+  mc mirror --preserve --overwrite old/kinolab-$b new/kinolab-$b
+done
+
+# 5. Point deploy/.env at the new provider:
+#      KINOLAB_S3_ENDPOINT=<endpoint>
+#      KINOLAB_S3_REGION=<region>
+#      KINOLAB_S3_ACCESS_KEY=... KINOLAB_S3_SECRET_KEY=...
+#      KINOLAB_S3_FORCE_PATH_STYLE / KINOLAB_S3_DISABLE_SSE per the table
+docker compose -f deploy/convex-backend.compose.yml up -d
+
+# 6. Prove it — PID 1 must still say --s3-storage (never trust the log):
+docker compose -f deploy/convex-backend.compose.yml exec kinolab-convex-backend \
+  sh -c "tr '\0' '\n' </proc/1/cmdline | grep -E -- '--(s3|local)-storage|--db'"
+```
+
+**Then verify by looking, not by grepping.** Open a shot that already has
+options and confirm the thumbnails render — a 404ing thumbnail means the keys
+did not land where the per-database prefix expects them. Upload one new
+option and confirm the object appears in the new `kinolab-files`. Check
+`docker compose -f deploy/convex-backend.compose.yml logs kinolab-convex-backend`
+for `SignatureDoesNotMatch` (wrong keys / wrong region) or `NotImplemented`
+(a checksum or SSE dialect mismatch — revisit the table).
+
+**Rollback**, any time before the old MinIO is deleted: put the old values
+back in `deploy/.env` and `up -d` again. That is why step 2 copies rather
+than moves, and why MinIO should stay untouched for a few days after the
+cutover before anyone reclaims the disk.
+
+**Afterwards.** The offsite mirror (`kinolab-offsite`, §Backups) still points
+at the *local* MinIO via `KINOLAB_S3_ENDPOINT` for its `files/` copy, so it
+follows the move automatically — but if the new provider IS the offsite
+provider, that second mirror is now copying a bucket to the same account and
+should be dropped from the compose. The backup zips are unaffected: they are
+written to `BACKUP_DIR` on the host either way.
+
 ## Backups and restore
 
 The production record lives in two places, neither of them the Convex

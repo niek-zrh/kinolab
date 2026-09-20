@@ -213,13 +213,27 @@ services:
       S3_STORAGE_EXPORTS_BUCKET: ${S3_STORAGE_EXPORTS_BUCKET:-kinolab-exports}
       S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET: ${S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET:-kinolab-snapshot-imports}
       # The S3 booleans (crates/aws_utils) go through Rust's bool parser: the
-      # value must be the literal string `true` — "1" is silently false.
-      # MinIO needs path-style addressing (bucket in the path, not the host;
-      # virtual-host addressing fails against it)…
-      AWS_S3_FORCE_PATH_STYLE: "true"
-      # …and rejects the SSE header ("KMS not configured"). Trailing checksums
-      # DO work against it — do NOT set AWS_S3_DISABLE_CHECKSUMS.
-      AWS_S3_DISABLE_SSE: "true"
+      # value must be the literal string `true` — "1" is silently false, and
+      # so is anything else. Keep that in mind when overriding them.
+      #
+      # Defaults are the on-host MinIO's requirements, so leaving both unset
+      # keeps the pilot behaving exactly as before. Override in deploy/.env
+      # when moving file storage to another S3 provider — see README
+      # §Moving file storage to another S3 provider.
+      #
+      # Path style: MinIO needs it (bucket in the path, not the host;
+      # virtual-host addressing fails against it). AWS S3 and most managed
+      # providers want it OFF — set KINOLAB_S3_FORCE_PATH_STYLE=false.
+      AWS_S3_FORCE_PATH_STYLE: ${KINOLAB_S3_FORCE_PATH_STYLE:-true}
+      # SSE: MinIO rejects the header ("KMS not configured"). On a provider
+      # with server-side encryption (AWS S3 encrypts by default) set
+      # KINOLAB_S3_DISABLE_SSE=false to let the header through.
+      AWS_S3_DISABLE_SSE: ${KINOLAB_S3_DISABLE_SSE:-true}
+      # Trailing checksums work against this MinIO, so AWS_S3_DISABLE_CHECKSUMS
+      # is deliberately NOT set here — its ABSENCE is load-bearing and an empty
+      # value is not the same as unset. Providers that reject trailing
+      # checksums (Cloudflare R2, Backblaze B2) need it added as a literal
+      # `AWS_S3_DISABLE_CHECKSUMS: "true"` line; the runbook says so.
     extra_hosts:
       # The host's own name does not resolve inside containers; host-gateway
       # maps host.docker.internal to the host (Linux Docker 20.10+).
