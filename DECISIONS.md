@@ -132,6 +132,34 @@ below are the spec's own decision texts; (g) is undecided.
 - 2026-09-19 — **Codes are renameable; links are editable by content editors.** Spec §7.4 tied the shot code to the Drive folder and canonical filename, so v1 made it immutable. Round one (First_Round.md §2.4): renaming was the first thing the tester looked for. v2 adds `shots.rename` (content.edit, never artists; refused on delivered shots and on element slots), recorded as `shot.renamed` with a `formerCodes` trail; Drive folders and already-filed Approved files are NOT renamed (Drive is dormant on the pilot; a rename job is in the parking lot) — new picks use the new code. Scene codes become editable and unique. External links move from production.manage to content.edit so a Creative Director can fix a wrong storyboard link; artists and viewers read them. Production code stays immutable.
 - 2026-09-19 — **Board cards are editable in place and every board element links into detail.** Spec F4 defined the Board as drag-between-stages plus gates. Round one (First_Round.md §6): 'more editable' and 'zoom from the board into the details'. v2 adds status/assignee/due edits on the card (same mutations and permission rules as the shot page), URL-addressable shot-page tabs (`?tab=`), cover thumbnails on cards, and column-title / scene-header links into the filtered Shots list. Reordering inside a column and multi-select are parked.
 
+Build notes (2026-09-19, decided while building the entries above):
+- **`scenes.list` is bounded with a per-scene `.take(50)` rather than a
+  denormalised counter.** The old query collected every shot of every scene
+  to count them — the same unbounded read `shots.list` was cured of on
+  2026-08-19. Nothing on screen shows the number (the Shots page uses the
+  rows for the scene filter), so `shotCount` saturates at 50 per scene under
+  a 3,000-read budget across ≤ 500 scenes, and rows carry `shotCountCapped`.
+  A counter on the scene would have meant a backfill migration and a second
+  invariant to keep on every shot insert, move and delete, for a number
+  nobody reads.
+- **A character's detail page shows one phase at a time** (Concept |
+  Animation switcher, `?slot=`) instead of stacking both sections: one set
+  of status/assignee/due controls, one uploader and one set of tab names
+  keeps every locator unambiguous, and the switcher still shows each phase's
+  status, option count and pick at a glance. **Delete lives in the list row
+  menu only** — removing the element while its detail query is subscribed
+  would throw into the error boundary before the navigation away.
+- **Review queue "Characters" = phases with options nobody has decided on
+  yet** (slot shots with `versionsCount > 0` and a status outside picked /
+  approved / final / delivered / killed); picks appear in "Decided today"
+  like shots. The spec said "slot shots with options"; the narrower rule is
+  what "needs a decision" means for shots too.
+- **The Playwright suite stays self-contained by default** (every spec signs
+  up its own throwaway owner); `E2E_EMAIL` / `E2E_PASSWORD` opt a spec into a
+  real local account. Credentials are passed on the command line only, never
+  stored in the repo. Two specs (decisions, generation-details) read
+  `KINOLAB_E2E_EMAIL` / `KINOLAB_E2E_PASSWORD` instead — to be unified.
+
 ## Open questions
 - 2.5b multiple selections — undecided 2026-09-19; one-pick invariant unchanged; candidate designs: alternates / slots / take-forward; needs First_Round.md §2.5b Q1–Q6 answered. (Draft entry to use only when decided: "2026-09-19 — Pick stays single; approved alternates added as a tagged state — spec §6 invariant kept; round one asked for several selections (First_Round.md §2.5b); studio confirmed the case is <case>; alternates never count as the shot's decision.")
 

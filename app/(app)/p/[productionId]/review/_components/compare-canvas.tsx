@@ -122,6 +122,7 @@ function Pane({
     <div className="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
       <div
         className={cn(
+          // Literal black/white scrim on purpose: the Review Room is always dark (spec v2 §(a).3), so no light variant exists.
           "z-10 flex h-7 shrink-0 items-center gap-2 border-b border-white/5 bg-black/30 px-2.5",
           clapped && "slate-clap",
         )}

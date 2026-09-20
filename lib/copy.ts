@@ -10,6 +10,8 @@ export const copy = {
     overview: "Overview",
     board: "Board",
     shots: "Shots",
+    preproduction: "Pre-production",
+    characters: "Characters",
     review: "Review",
     files: "Files",
     decisions: "Decisions",

@@ -129,7 +129,7 @@ function FileRow({
         <img
           src={asset.thumbUrl}
           alt=""
-          className="size-9 shrink-0 rounded-md border object-cover"
+          className="size-9 shrink-0 rounded-md border bg-muted object-cover"
         />
       ) : (
         <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted">

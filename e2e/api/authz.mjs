@@ -110,12 +110,12 @@ export async function run() {
   // ROLE_CAPS in convex/lib/permissions.ts and spec §3.
   const cases = [
     // creative_director: no studio.manage, no production.manage, no report.publish
+    // (external links are content.edit since v2 item e — asserted as allowed below)
     ["creative director", director.token, [
       ["invite a member", "mutation", "studios:invite", { studioId: owner.studioId, email: uniqueEmail("cd"), role: "artist" }],
       ["seed the QC template", "mutation", "qc:seedDefaultTemplate", { studioId: owner.studioId }],
       ["rename the production", "mutation", "productions:update", { productionId, name: "CD" }],
       ["set gate approvers", "mutation", "productions:setGateApprovers", { stageInstanceId, approverIds: [director.userId] }],
-      ["add an external link", "mutation", "externalLinks:add", { productionId, kind: "other", title: "x", url: "https://e.example.com" }],
     ]],
     // supervisor: no studio.manage, no production.manage, no report.publish, no gate.decide
     ["supervisor", supervisor.token, [
@@ -133,6 +133,7 @@ export async function run() {
       ["approve the stage gate", "mutation", "approvals:decideGate", { stageInstanceId, decision: "approved" }],
       ["start a QC run", "mutation", "qc:createRun", { productionId, name: "nope" }],
       ["publish a report", "mutation", "reports:generateNow", { productionId }],
+      ["add an external link", "mutation", "externalLinks:add", { productionId, kind: "other", title: "x", url: "https://e.example.com" }],
     ]],
     // viewer: comment.create only
     ["viewer", viewer.token, [
@@ -141,6 +142,7 @@ export async function run() {
       ["pick a version", "mutation", "versions:pick", { versionId: ownVersion.versionId }],
       ["invite a member", "mutation", "studios:invite", { studioId: owner.studioId, email: uniqueEmail("vw"), role: "artist" }],
       ["start a QC run", "mutation", "qc:createRun", { productionId, name: "nope" }],
+      ["add an external link", "mutation", "externalLinks:add", { productionId, kind: "other", title: "x", url: "https://e.example.com" }],
     ]],
   ];
   for (const [label, token, attempts] of cases) {
@@ -155,6 +157,7 @@ export async function run() {
   suite.allowed("viewer can read the production", await query("productions:get", { productionId }, viewer.token));
   suite.allowed("viewer can comment", await mutation("comments:add", { productionId, targetType: "shot", targetId: ownShotId, body: "looks good", mentions: [] }, viewer.token));
   suite.allowed("creative director can decide a version", await mutation("versions:shortlist", { versionId: ownVersion.versionId }, director.token));
+  suite.allowed("creative director can add an external link (content.edit, v2 item e)", await mutation("externalLinks:add", { productionId, kind: "figma", title: "Storyboard", url: "https://cd.example.com/board" }, director.token));
   suite.allowed("producer can publish a report", await mutation("reports:generateNow", { productionId }, producer.token));
 
   /* ================= 3. supervisor scope (self-assignment) ============== */

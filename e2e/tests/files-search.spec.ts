@@ -1,11 +1,12 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import {
+  bulkCreateShots,
   createProduction,
   createStudio,
+  PASSWORD,
   trackErrors,
   uniqueEmail,
   uploadOptions,
-  PASSWORD,
 } from "./helpers";
 
 /**
@@ -80,12 +81,9 @@ test.describe.serial("files & search", () => {
     await createStudio(page, "Files E2E Studio");
     base = await createProduction(page, "Files E2E Feature");
 
-    // One shot with two uploaded options.
-    await page.goto(`${base}/shots`);
-    await page.getByRole("button", { name: "Paste codes" }).click();
-    const dialog = page.getByRole("dialog");
-    await dialog.getByLabel("Shot codes").fill(SHOT);
-    await dialog.getByRole("button", { name: "Create 1 shot" }).click();
+    // One shot with two uploaded options — through the shared helper, which
+    // drives "New shots" › Import (v2 item d replaced the Paste codes dialog).
+    await bulkCreateShots(page, base, [SHOT]);
     await page.getByRole("link", { name: SHOT }).click();
     await expect(page.getByRole("heading", { name: SHOT })).toBeVisible();
     await uploadOptions(page, 2);

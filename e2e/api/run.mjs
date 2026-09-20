@@ -10,11 +10,17 @@
  *   authz.mjs      six-role capability matrix, cross-tenant isolation, offboarding
  *   integrity.mjs  concurrency invariants and the stage-gate state machine
  *   validation.mjs limits, locale and hostile input
+ *   shots-v2.mjs   v2 shots backend: import, rename, slots, scenes, links, meta
+ *   elements.mjs   characters (elements.*): role matrix, slot shots, limits
+ *   exports.mjs    provenance export: authz, pagination, columns, limits
  */
 import { CONVEX_URL, report } from "./_harness.mjs";
 import { run as authz } from "./authz.mjs";
 import { run as integrity } from "./integrity.mjs";
 import { run as validation } from "./validation.mjs";
+import { run as shotsV2 } from "./shots-v2.mjs";
+import { run as elements } from "./elements.mjs";
+import { run as exports } from "./exports.mjs";
 
 const health = await fetch(`${CONVEX_URL}/version`).catch(() => null);
 if (!health || !health.ok) {
@@ -30,6 +36,9 @@ for (const [name, fn] of [
   ["Authorization", authz],
   ["Data integrity", integrity],
   ["Validation", validation],
+  ["Shots v2", shotsV2],
+  ["Elements", elements],
+  ["Provenance export", exports],
 ]) {
   console.log(`\n── ${name} ${"─".repeat(Math.max(0, 60 - name.length))}`);
   try {

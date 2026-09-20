@@ -19,8 +19,8 @@ export type RunCheck = RunDetail["checks"][number];
 type CheckResult = RunCheck["result"];
 
 const RESULT_ACTIVE: Record<"pass" | "fail" | "na", string> = {
-  pass: "bg-status-approved text-white",
-  fail: "bg-destructive text-white",
+  pass: "bg-status-approved text-background",
+  fail: "bg-destructive text-background",
   na: "bg-muted-foreground text-background",
 };
 

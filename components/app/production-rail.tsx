@@ -44,10 +44,8 @@ const GROUPS: { label?: string; items: RailItem[] }[] = [
     ],
   },
   {
-    // Copy inline: lib/copy.ts (nav.preproduction / nav.characters) is not
-    // part of this change.
-    label: "Pre-production",
-    items: [{ href: "/characters", label: "Characters", icon: Users }],
+    label: copy.nav.preproduction,
+    items: [{ href: "/characters", label: copy.nav.characters, icon: Users }],
   },
   {
     items: [

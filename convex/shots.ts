@@ -77,8 +77,11 @@ function cachedGet<T extends "users" | "scenes" | "episodes">(
   return pending;
 }
 
-/** Highest `order` in the production (0 when empty) — one indexed read. */
-async function lastOrder(
+/**
+ * Highest `order` in the production (0 when empty) — one indexed read.
+ * Exported for elements.ts (slot shots count up from the same value).
+ */
+export async function lastOrder(
   ctx: QueryCtx | MutationCtx,
   productionId: Id<"productions">,
 ): Promise<number> {
@@ -1110,9 +1113,10 @@ export const setStage = mutation({
  * pick already recorded) has to be emptied deliberately first. The shot's
  * comments and asset rows go with it — they can only dangle otherwise — but
  * activity rows stay: the daily report counts them (reports.ts) and history
- * should keep the fact that the shot existed.
+ * should keep the fact that the shot existed. Exported for elements.remove,
+ * which applies the same rules to each slot shot.
  */
-async function removeShotIfSafe(
+export async function removeShotIfSafe(
   ctx: MutationCtx,
   shot: Doc<"shots">,
 ): Promise<string | null> {

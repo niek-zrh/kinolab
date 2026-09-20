@@ -8,7 +8,7 @@ import {
   assertMemberForProduction,
 } from "./lib/permissions";
 import { actorName, logActivity } from "./lib/activity";
-import { createShotRow } from "./shots";
+import { createShotRow, lastOrder, removeShotIfSafe } from "./shots";
 import {
   deriveElementCode,
   ELEMENT_KIND_LABELS,
@@ -169,23 +169,6 @@ async function maxElementOrder(
     if (scanned >= MAX_ORDER_SCAN) break;
   }
   return max;
-}
-
-/**
- * Highest shot `order` in the production (0 when empty) — one indexed read,
- * the same lookup shots.ts keeps private as `lastOrder`. Batch callers read
- * it once and count up through createShotRow's `order` argument.
- */
-async function lastShotOrder(
-  ctx: QueryCtx | MutationCtx,
-  productionId: Id<"productions">,
-): Promise<number> {
-  const last = await ctx.db
-    .query("shots")
-    .withIndex("by_production_order", (q) => q.eq("productionId", productionId))
-    .order("desc")
-    .first();
-  return last?.order ?? 0;
 }
 
 /** An element's slot shots — a handful of rows through `by_element`. */
@@ -401,7 +384,7 @@ export const get = query({
  * `bulkCreate` and the demo seed. Inputs are already validated and the code
  * already known to be free; `order` is the element's position among its kind
  * and `firstShotOrder` the `order` of its first slot shot (batch callers read
- * `lastShotOrder` once and count up by `slots.length`). Writes NO activity
+ * shots.ts `lastOrder` once and count up by `slots.length`). Writes NO activity
  * row — the calling mutation logs its own (CONTRACTS rule 1).
  */
 export async function insertElementWithSlots(
@@ -493,7 +476,7 @@ export const create = mutation({
         `${kindLabelCap(args.kind)} code ${code} already exists`,
       );
     const order = (await maxElementOrder(ctx, args.productionId, args.kind)) + 1;
-    const firstShotOrder = (await lastShotOrder(ctx, args.productionId)) + 1;
+    const firstShotOrder = (await lastOrder(ctx, args.productionId)) + 1;
     const { elementId } = await insertElementWithSlots(ctx, {
       productionId: args.productionId,
       studioId: production.studioId,
@@ -590,7 +573,7 @@ export const bulkCreate = mutation({
     }
     const taken = new Set<string>();
     let order = await maxElementOrder(ctx, args.productionId, args.kind);
-    let shotOrder = await lastShotOrder(ctx, args.productionId);
+    let shotOrder = await lastOrder(ctx, args.productionId);
     let created = 0;
     const skipped: string[] = [];
     for (const name of names) {
@@ -767,45 +750,6 @@ export const update = mutation({
   },
 });
 
-/**
- * The shots.remove rules for one slot shot: versions (or a recorded pick)
- * block the delete; otherwise the shot's dangling comments and asset rows go
- * with it and its activity rows stay (reports count on them). Mirrors the
- * private `removeShotIfSafe` in shots.ts.
- */
-async function slotShotBlocked(
-  ctx: MutationCtx,
-  shot: Doc<"shots">,
-): Promise<boolean> {
-  if (shot.pickedVersionId !== undefined) return true;
-  const version = await ctx.db
-    .query("versions")
-    .withIndex("by_shot", (q) => q.eq("shotId", shot._id))
-    .first();
-  return version !== null;
-}
-
-async function deleteSlotShot(
-  ctx: MutationCtx,
-  shot: Doc<"shots">,
-): Promise<void> {
-  const comments = await ctx.db
-    .query("comments")
-    .withIndex("by_target", (q) =>
-      q.eq("targetType", "shot").eq("targetId", shot._id),
-    )
-    .collect();
-  for (const comment of comments) await ctx.db.delete(comment._id);
-  // No versions means no asset here backs one; these are loose files/links.
-  // The storage blobs themselves are left alone, as shots.remove leaves them.
-  const assets = await ctx.db
-    .query("assets")
-    .withIndex("by_shot", (q) => q.eq("shotId", shot._id))
-    .collect();
-  for (const asset of assets) await ctx.db.delete(asset._id);
-  await ctx.db.delete(shot._id);
-}
-
 export const remove = mutation({
   args: { elementId: v.id("elements") },
   handler: async (ctx, args) => {
@@ -817,13 +761,17 @@ export const remove = mutation({
       "content.edit",
     );
     const slotShots = await slotShotsOf(ctx, element._id);
+    // shots.ts removeShotIfSafe checks and deletes in one step (versions or a
+    // recorded pick block it; dangling comments / asset rows go, activity rows
+    // stay). A refusal throws, and the mutation's transaction rolls back any
+    // slot shot already deleted in this loop.
     for (const shot of slotShots) {
-      if (await slotShotBlocked(ctx, shot))
+      const blocked = await removeShotIfSafe(ctx, shot);
+      if (blocked !== null)
         throw new ConvexError(
           `This ${kindLabel(element.kind)} has options — remove them first`,
         );
     }
-    for (const shot of slotShots) await deleteSlotShot(ctx, shot);
     await ctx.db.delete(element._id);
     await logActivity(ctx, {
       productionId: element.productionId,

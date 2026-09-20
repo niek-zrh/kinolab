@@ -2,13 +2,18 @@
 
 Production orchestration for AI-native film studios. **Files live in Drive.
 Decisions live here.** One calm overview per production, a stage-gated
-pipeline, a shot list, a Review Room that formalizes the
+pipeline, a shot list, characters under Pre-production with the same
+options-and-pick loop per phase, a Review Room that formalizes the
 options-screenshots-and-pick workflow, Google Drive as the file home, daily
-production reports, and a TV-delivery QC checklist.
+production reports, a TV-delivery QC checklist, and a provenance export of
+every prompt and decision.
 
 Built on Next.js 15 + Convex (realtime) + Tailwind v4 + shadcn/ui.
-Spec: `stravi-pilot-mega-prompt.md` · decisions log: [DECISIONS.md](DECISIONS.md) ·
+Spec: `stravi-pilot-mega-prompt.md` · second-round brief: `docs/SPEC-v2.md` ·
+decisions log: [DECISIONS.md](DECISIONS.md) ·
 backend API contract: [docs/CONTRACTS.md](docs/CONTRACTS.md) · plan: [PLAN.md](PLAN.md).
+Current version: **1.1.0-pilot.2** — what changed is in
+§What changed in v1.1.0-pilot.2.
 
 ---
 
@@ -25,7 +30,8 @@ CONVEX_AGENT_MODE=anonymous npx convex dev --once
 # 2. Generate + store the Convex Auth signing keys on that deployment:
 node scripts/setup-auth.mjs
 
-# 3. Seed the demo studio (Aurora North / SIGNAL LOST). LOCAL DEMOS ONLY —
+# 3. Seed the demo studio (Aurora North / SIGNAL LOST: 14 shots, the five
+#    Heroes characters with their prompts, activity). LOCAL DEMOS ONLY —
 #    never against the pilot backend, see §Go-live checklist:
 CONVEX_AGENT_MODE=anonymous npx convex run seed:run
 
@@ -61,12 +67,21 @@ collaboration — boards, review rooms and gate chips update live.
    Overview), approves with a note → the chip flips live in browser one.
 3. **Artist** opens shot `SC010_SH020` → pastes/drops two images → versions
    v5, v6 appear (with a Drive hub connected they also land in
-   `…/Shots/SC010_SH020/Options/`).
+   `…/Shots/SC010_SH020/Options/`). Then **Pre-production › Characters**:
+   the five Heroes are there (Pushistik, Mama, Tupik, Morzh, Papa Tupik —
+   Pushistik, Mama and Papa Tupik already have a picked Concept). Open
+   **Tupik** → Concept → drop two more images → v3, v4; back in the list the
+   Concept cell reads "4 options · Options ready". **Paste names** with
+   `Sova\nLisa` adds two characters with codes SOVA / LISA in one go.
 4. **Creative Director** → Review → `SC010_SH020`: `2`–`4` to compare,
    scroll to zoom (synced), `S` to shortlist two, `P` to **pick** with a note
    → siblings rejected, shot flips to *picked*, Decisions ledger + activity
    updated, artist notified. With a hub: the canonical file appears in
-   `Approved/`.
+   `Approved/`. The queue's **Characters** group lists *Tupik — Concept*:
+   open it, `P` on v4 → the Characters list shows the picked thumb and
+   *Picked* in Tupik's Concept cell, **Final › Open** is enabled, and
+   Decisions › Picks lists `CH_TUPIK_CONCEPT`. (The shot page is the same
+   page for both — a character phase *is* a shot underneath.)
 5. **Producer** → Reports → **Generate now** → the day's picks/uploads/
    comments are in the report → **Publish** (everyone gets notified).
 6. **Delivery engineer** (owner works) → QC → **New QC run** "EP01 — TV
@@ -85,6 +100,246 @@ collaboration — boards, review rooms and gate chips update live.
    > requiring Google's CASA security assessment. The Picker is the supported
    > route in, and **Sync now** keeps already-known files up to date
    > (renames, new revisions, trashed files).
+
+---
+
+## What changed in v1.1.0-pilot.2 (second tester round)
+
+Everything below came out of the first tester round (`docs/SPEC-v2.md`,
+written from First_Round.md and the studio's "Heroes" sheet). Nothing here
+needs a data migration: new tables and optional fields only.
+
+### Appearance
+
+The app opens **dark** on every device. **Settings › Appearance** (the first
+card, visible to every role) and the avatar menu offer Dark | Light | System;
+both write the same preference. It is per device, not per account
+(localStorage `kinolab-theme`, via next-themes) — a shared laptop keeps one
+choice for everyone who uses it, and a private window with blocked storage
+simply opens dark. Choosing System follows the OS live.
+
+The **Review Room and its dialogs are always dark**, whatever you chose:
+colour judgement wants a neutral surround. Under Light the transition into
+the room is intentional; leaving it restores your theme. Thumbnails
+everywhere (option cards, board cards, files, filmstrip) sit in a hairline
+frame on a muted letterbox so light images do not float on dark.
+
+Settings is in the rail for every role now. The cards that need
+`production.manage` — Details editing, Stages & gates, Drive hub — still hide
+themselves from everyone else; **Links** is readable by every role and
+editable by `content.edit` roles (owner, producer, creative director,
+supervisor), so a CD can fix a wrong storyboard link.
+
+### Characters (Pre-production)
+
+Rail: **Pre-production › Characters** → `/p/{id}/characters`. The list is the
+studio's Heroes sheet, column for column:
+
+| Heroes sheet | Kinolab |
+|---|---|
+| № | row number |
+| Name | **Name** + mono code (`PUSHISTIK` — derived from the name, editable) |
+| Concept / Concept Status | **Concept**: thumbnail + status pill; click → the character's Concept phase |
+| Animation / Anim Status | **Animation**: the same for the second phase |
+| Final | **Final › Open** — the picked file of the latest picked phase (disabled until something is picked) |
+| URL | folded into Final › Open |
+| Prompt | **Prompt** — the character's base prompt (click to edit inline; blur saves, Esc cancels; copy button) |
+| colour flags | the status pills |
+
+Underneath, **each phase is a shot**: creating a character creates one "slot
+shot" per phase (`CH_PUSHISTIK_CONCEPT`, `CH_PUSHISTIK_ANIMATION`, stage
+Pre-Production, no scene), so uploading options, shortlist / reject / pick
+with the one-pick rule, the Review Room, comments, history, the Decisions
+ledger, notifications and the daily report all work on a character phase
+exactly as on a shot — and the report's tiles count character options and
+picks alongside shot work. Slot shots never show up on the Shots page, the
+Board, the Overview counts or search; a link that points at one (a
+notification, a ledger row, history) lands on the character page with the
+right phase selected. The prefixes `CH_`, `LOC_` and `SCR_` are reserved:
+an ordinary shot cannot use them.
+
+- Header "Characters · N" (capped at 300 — the header says "(first 300)").
+- **New character** (hotkey `N` on this page): the code is derived from the
+  name (ASCII letters and digits, spaces → `_`, uppercased) and can be
+  changed before saving; a Cyrillic-only name asks for a code — "Codes use
+  A–Z, 0–9 and _". Codes are unique per production; duplicate names are
+  allowed.
+- **Paste names**: one name per line (up to 200); code collisions get
+  `_2`, `_3`; names that yield no code are reported as skipped. The empty
+  state ("No characters yet. Add one, or paste the names from your sheet.")
+  carries the same form inline.
+- Row menu (`{name} menu`): **Rename…** (name and code — renaming the code
+  renames the phase shots too, and the old code is kept as "formerly …"),
+  **Edit prompt…**, **Open in Review Room** (the first phase with options),
+  **Delete** — refused while any phase has options ("This character has
+  options — remove them first"). Delete is on the list only, not on the
+  detail page.
+- Detail page `/p/{id}/characters/{elementId}`: name and code (Rename
+  dialog), description and base prompt (with Copy), then a **Concept |
+  Animation** switcher (`?slot=`, Concept by default) showing one phase at a
+  time — the shot page's Status / Assignee / Due controls and the Options |
+  Discussion | Files | History tabs for that phase, plus "Open in Review
+  Room". The switcher shows every phase's status, option count and pick.
+- Review → the queue gains a **Characters** group: phases that have options
+  and no decision yet. Character picks appear in "Decided today" like shots.
+- Who may do what: create, rename, edit prompts and delete = `content.edit`
+  roles; artists upload options to any phase, comment, and change a phase's
+  status / assignee / due date only when assigned; deciding follows the shot
+  rules (a supervisor decides when gate approver of Pre-Production);
+  viewers read and comment.
+
+The demo seed creates the five Heroes with their sheet prompts as base
+prompts, a few placeholder options, three picked Concepts (Pushistik, Mama,
+Papa Tupik) and Papa Tupik's picked Animation — the sheet's one green cell
+(local demos only — never the pilot). Locations and scripts use the same model later;
+today only characters have a UI.
+
+### New shots (Generate | Import)
+
+Shots › **New shots** (hotkey `N`) opens a dialog with two tabs; the
+dropdown next to the button has **Single shot…** (the one-shot dialog, kept
+for inserts such as `SH015`) and **Import list…**. A production with no
+shots shows the same panel inline.
+
+**Generate** — name a scene, say how many shots:
+
+- **Existing scene | New scene** (New is preselected when the production has
+  no scenes yet). Existing → pick a scene (the episode follows it). New →
+  scene code (`SC010`), optional title, episode when episodic. Scene codes
+  are unique per production now.
+- **Count** 1–200 (larger numbers are clamped and say so), **Start** 10,
+  **Step** 10 (≥ 1), and the **pattern** `{SCENE}_SH{N:3}` behind "Customise
+  pattern" — tokens `{SCENE}`, `{N}` / `{N:pad}` (zero-padded number),
+  `{EP}` (`EP01`), `{I}` (1-based row index); Reset puts the default back.
+- A live **preview** of the codes (the full list up to 50, else first three
+  / … / last) marks codes that already exist — "exists — will be skipped",
+  "2 of 5 already exist" — so the submit reads "Create 3 shots in SC020"
+  with the number that will actually be created.
+- **Titles**, one per line, line *i* → shot *i*; extra lines are reported as
+  ignored. Enter submits from every field except Titles (there
+  ⌘/Ctrl+Enter). On success: toast, and the Shots table filtered to that
+  scene. The last Start / Step / Pattern are remembered per production on
+  this device (`kinolab-shot-numbering:{productionId}`).
+
+**Import** — paste from your sheet (Google Sheets pastes tab-separated), or
+pick / drop a `.csv`, `.tsv` or `.txt` file:
+
+- A line containing tabs, commas or semicolons is one row of columns;
+  otherwise every line is one code. Quotes, CRLF and a BOM are tolerated.
+- The **header is auto-detected** when the first row names any of
+  `code`/`shot`, `title`/`name`, `scene`, `episode`/`ep`, `assignee`,
+  `due`/`due date`; without a header the columns are positional: code,
+  title, scene. Without a Scene column the Scene / Episode pickers below the
+  textarea apply to every row. Up to **500 rows** per paste.
+- The preview gives every row a verdict: ok · exists (skip) · duplicate in
+  paste (skip) · invalid code (empty, > 64 chars, a reserved `CH_`/`LOC_`/
+  `SCR_` prefix, characters outside A–Z 0–9 `_` `-`) · title too long
+  (> 200) · unknown scene → will be created (with **Create missing scenes**,
+  on by default) · unknown episode · unknown assignee · bad date (dates
+  are `YYYY-MM-DD`; `DD.MM.YYYY` is converted). Invalid rows and in-paste
+  duplicates are dropped; existing codes are skipped, never overwritten.
+  The footer reads "Create 42 shots · 3 skipped · 1 invalid"; the server is
+  authoritative and reports what it skipped.
+- One activity row per import ("Anna created scene SC010 and 10 shots");
+  assignees get one aggregated notification each.
+
+**Edit scene**: the pencil on the scene filter chip opens the Edit scene
+sheet — code, title, episode, description, storyboard (Figma) URL, and
+**Delete scene** when it has no shots. **Changing a scene's code does not
+rename its shots' codes** (the sheet says so); rename shots individually.
+
+### Renaming and re-linking
+
+- **Shot code**: on the shot page, `content.edit` roles click the mono code
+  in the heading (or ⋯ "Shot code actions" › **Rename code…**), edit inline
+  (Enter or blur to submit, Esc to cancel) and confirm: "Renaming SC010_SH020
+  → SC010_SH025. Comments and history keep the old text; the rename is
+  recorded." The heading then shows "formerly SC010_SH020"; the ledger,
+  search and the Review Room read the new code; History has the
+  `shot.renamed` row. Refused for an existing code, on delivered shots and on
+  character phases (rename the character instead); artists never rename.
+  **Drive folders and already-filed Approved copies are not renamed** — Drive
+  is dormant on the pilot; new picks use the new code.
+- **Scene / episode of a shot**: the meta line on the shot page is a
+  scene select (with inline create) and an episode select for `content.edit`
+  roles; choosing a scene sets the episode from it. Text for everyone else.
+- **Links** (Settings › Links): read by everyone, edited by `content.edit`.
+- **Production code** stays immutable — it is in every canonical filename
+  and the Drive root; the Details card says "ask us".
+- **Generation details** of a version — see below. Character name, code,
+  description and base prompt — see §Characters.
+
+### Board
+
+Cards are places to work now, and every element links into detail:
+
+- The **⋯ menu** on a card (hover / focus, right-click, Shift+F10 or the
+  Menu key): **Status ▸**, **Assign to ▸** (studio members), **Due date…**
+  (date popover with Clear), Open shot, Open in Review Room, Discussion /
+  Files / History (deep links), Copy code. The status pill and the assignee
+  avatar open the same submenus; the due chip opens the date popover.
+  Permissions match the shot page — `content.edit` roles on any shot,
+  artists on their own shots within the working statuses, viewers see no
+  menu (links still work) — and the server enforces everything: Approved
+  without a pick comes back as "Pick a version before approving this shot"
+  and the pill reverts. There is no Unassign (the backend cannot clear an
+  assignee yet).
+- The card is focusable (Enter opens the shot); the code and title are the
+  links. "4 options" opens the Options tab; the shot page's tabs are
+  URL-addressable — `?tab=options|discussion|files|history`.
+- A **Picked** chip (✓) on a shot with a pick opens the Review Room. It
+  reads "✓ v3" once `shots.list` carries the picked index; until then
+  "✓ Review".
+- **Cover thumbnail** strip on cards with options, with a **Compact |
+  Cards** toggle in the header remembered per device (localStorage
+  `kinolab.boardView`).
+- Column title → the Shots page filtered to that stage; the same 1,000-shot
+  cap banner as the Shots page ("first 1000 — narrow with a filter").
+- Test hooks are stable: cards carry `aria-label="{code}"` and
+  `data-shot-card="{code}"`; the controls are `Actions for {code}`,
+  `Change status of {code}`, `Assign {code}`, `Due date of {code}`.
+
+### Generation details and the provenance export
+
+"Prompt details" is now **Generation details** — tool, model, prompt, seed,
+params and a note: "so anyone can regenerate this option or show how it was
+made." Set them in the upload popover ("Applied to the next uploads. You can
+edit them later on each option.") and **edit them later on any option**:
+Options tab card › **Edit details** (pencil), or the Review Room's right rail
+› Generation details › Edit. The creator of the version and `content.edit`
+roles may edit (an artist only their own uploads; viewers never). Caps:
+prompt and params 20,000 characters, tool / model / seed 200, note 2,000.
+Every edit is a `version.updated` row in History.
+
+**Export provenance (CSV)** — Decisions › ledger toolbar, next to "Export
+CSV", for owners and producers only. One row per version across shots *and*
+character phases, newest first, rejected and superseded versions included:
+studio and production, target (shot or character, code, title, phase),
+scene and episode, version number and status, when it was created (UTC and
+production-local) and by whom (name, email), tool / model / prompt / seed /
+params / note, the file (name, MIME type, size, MD5, provider, location,
+missing flag), the canonical Approved filename when picked, the decision
+(who, when, note) and when the details were last edited and by whom — 37
+columns, listed in `docs/CONTRACTS.md` §exports.ts. The file is
+`{CODE}_provenance_{YYYY-MM-DD}.csv`, UTF-8 with BOM (Excel + Cyrillic),
+CRLF, fetched 400 rows at a time with a progress toast, and logged in the
+activity feed as "Niek exported provenance (312 rows)".
+
+> **Cells are verbatim.** This file is evidence, so every cell is quoted
+> exactly as stored and **no spreadsheet formula guard is applied** — unlike
+> the ledger's Export CSV. A prompt that begins with `=`, `+`, `-` or `@`
+> will be evaluated as a formula if you open the file in Excel or Google
+> Sheets by double-clicking. Open it as text, or import it with every column
+> typed as text.
+
+> **Storage rows name only the app's storage id.** For files uploaded
+> through the app, `file_location` is `app storage:{storageId}` — the Convex
+> `_storage` id, not an S3 object key: the backend's per-database prefix and
+> the MinIO key are invisible to application code. The id is what the export
+> zip uses (`_storage/<id>` in the backup, §Backups and restore), which is how
+> to hand the bytes over alongside the CSV. Drive-backed rows carry the
+> `webViewLink`; link rows carry the URL; a version whose file is gone has
+> `file_missing` = `true` and empty `file_*` cells.
 
 ---
 
@@ -740,9 +995,33 @@ suite need no configuration, and a real deployment fails closed. **Set it to
 the public host** (`pilot.kinolab.ai`) wherever the app is deployed; keep it
 in step with the Traefik `Host()` rule.
 
-## E2E smoke tests
+## Tests
 
-With `pnpm dev` running (and the seed applied):
+With `pnpm dev` running against the local anonymous deployment (never the
+pilot):
+
+```bash
+pnpm typecheck                       # tsc --noEmit
+pnpm test:api                        # e2e/api/run.mjs — server-side suite: six-role
+                                     # authz matrix, integrity, validation, shots-v2,
+                                     # elements (characters), exports (provenance)
+pnpm test:e2e                        # Playwright, e2e/tests/*.spec.ts (reuses :3000)
+pnpm exec playwright test e2e/tests/characters.spec.ts   # one spec
+node scripts/screenshot-themes.mjs   # both-theme walk of every route →
+                                     # e2e/screenshots/{dark,light}/{route}.png
+```
+
+Every spec is serial and self-contained: it signs up its own throwaway
+owner, studio and production (`e2e/tests/helpers.ts`), so nothing depends on
+the seed and multi-tenant isolation keeps the leftovers invisible to real
+accounts. To run a spec as an existing local account instead, pass
+`E2E_EMAIL=… E2E_PASSWORD=…` on the command line (the spec signs in, or signs
+the account up on a fresh local deployment; a production with a unique code
+is created per run). `decisions.spec.ts` and `generation-details.spec.ts`
+read `KINOLAB_E2E_EMAIL` / `KINOLAB_E2E_PASSWORD`. Credentials never go in
+the repo.
+
+The two older smoke scripts still work (seed applied):
 
 ```bash
 SHOTS_DIR=/tmp/slate-shots node e2e/qa-flow.mjs    # full §13 demo: studio → wizard →
@@ -752,23 +1031,27 @@ QA_SIGNUP=1 SHOTS_DIR=/tmp/slate-shots node e2e/qa-aurora.mjs  # screenshot walk
                                                    # seeded Aurora North screen
 ```
 
-Each run creates throwaway users/studios in the local dev DB; multi-tenant
-isolation keeps them invisible to real accounts.
-
 ## Repo map
 
 ```
 app/                  Next.js routes (App Router)
   (auth)/sign-in      Sign-in (password fallback + Google)
   (app)/              Shell: studio home, team, /new wizard, /p/[productionId]/*
-components/app        Kinolab components (slate-strip, status-pill, shell…)
+                      (board, shots, shots/[shotId], characters, characters/[elementId],
+                      review, review/[shotId], files, decisions, reports, qc, settings)
+components/app        Kinolab components (slate-strip, status-pill, shell, theme
+                      provider + appearance control, generation-details dialog…)
 components/ui         shadcn/ui primitives (Base UI generation)
 convex/               Backend: schema, auth, modules per docs/CONTRACTS.md
+  elements.ts         characters (elements + slot shots), v1.1
+  exports.ts          provenance export, v1.1
   lib/                permissions (assertCan), activity, notify, domain, google (Drive REST)
   seed.ts             npx convex run seed:run (local demos only)
   migrations.ts       backfills + auditDanglingStorage / markDanglingAssetsMissing
-lib/                  client helpers (copy, format, hotkeys, google-picker)
+lib/                  client helpers (copy, format, hotkeys, google-picker, csv)
+e2e/tests/            Playwright specs + helpers.ts · e2e/api/  server-side suite
 scripts/setup-auth.mjs        Convex Auth key generation
+scripts/screenshot-themes.mjs both-theme screenshot walk (dark + light)
 scripts/pilot-env-backup.sh   dump the deployment's env vars (npx convex env list) → password manager
 scripts/pilot-rebuild.sh      export zip + env dump → fresh backend: import, env set, push, verify
 deploy/convex-backend.compose.yml  stateless Convex backend + Postgres + dashboard + backup + offsite mirror
@@ -778,5 +1061,6 @@ docker-compose.yml    frontend (+ one-shot function push) behind the host proxy
 
 Working agreements: every mutation is permission-checked server-side and
 writes one human-readable activity row; picks/approvals are immutable;
-tokens never reach a client. UI tokens and the two-mood design system live
-in `app/globals.css` (spec §9).
+tokens never reach a client. UI tokens for both themes (dark by default,
+light as a preference, the Review Room always dark) live in
+`app/globals.css` (spec §9, revised in v1.1 — see §Appearance).

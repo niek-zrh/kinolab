@@ -3,6 +3,11 @@ import { cn } from "@/lib/utils";
 /**
  * Kinolab brand mark, recreated from kinolab.ai: orange rounded square,
  * skewed clapper bar, selection chevron. Dark glyphs on accent per brand.
+ *
+ * The fills below are literal on purpose and never follow the theme tokens:
+ * the mark is identical in Dark and Light (spec v2 §(a).2 keeps `--tape`
+ * #ff6b2c with dark glyphs in both themes), so it is exempt from the
+ * no-hardcoded-colours rule.
  */
 export function KinolabMark({ className }: { className?: string }) {
   return (

@@ -75,11 +75,13 @@ export function Filmstrip({
                   <Film className="size-4" />
                 </div>
               )}
+              {/* Literal black/white on purpose: the Review Room is always dark (spec v2 §(a).3) and the badge sits over any image. */}
               <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1 font-mono text-[10px] leading-4 text-white">
                 v{version.index}
               </span>
               <span
                 className={cn(
+                  // Literal black ring on purpose: always-dark room, dot must separate from any thumbnail.
                   "absolute right-1 top-1 size-1.5 rounded-full ring-1 ring-black/40",
                   VERSION_DOT[version.status],
                 )}
