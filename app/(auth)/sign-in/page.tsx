@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { copy } from "@/lib/copy";
 import { KinolabMark, KinolabWordmark } from "@/components/app/kinolab-mark";
+import { CinemaBackdrop } from "@/components/app/cinema-backdrop";
 
 /**
  * Convex Auth stores the access token in localStorage under a key namespaced
@@ -119,8 +120,9 @@ export default function SignInPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-sm">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-6">
+      <CinemaBackdrop />
+      <div className="relative w-full max-w-sm">
         <div className="mb-8 flex items-center gap-3">
           <KinolabMark className="size-10 shrink-0" />
           <div>

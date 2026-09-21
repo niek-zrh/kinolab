@@ -39,7 +39,7 @@ export function ShotsGrid({
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-      {shots.map((shot) => {
+      {shots.map((shot, i) => {
         const late =
           shot.dueDate !== undefined &&
           shot.dueDate < today &&
@@ -57,7 +57,10 @@ export function ShotsGrid({
             title={`${shot.code}${shot.title ? ` — ${shot.title}` : ""} · ${
               SHOT_STATUS_BY_KEY[shot.status].label
             }`}
-            className="group block outline-none"
+            className="group gate-weave block outline-none"
+            // Staggered only across the first rows: past that it is scrolling,
+            // not arriving, and a delayed frame would just look broken.
+            style={{ animationDelay: `${Math.min(i, 11) * 35}ms` }}
           >
             <div
               // The status edge rides the top of the frame itself — the

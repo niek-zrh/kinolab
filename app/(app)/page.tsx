@@ -6,12 +6,12 @@ import Link from "next/link";
 import { Plus, HardDrive } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/app/empty-state";
 import {
   PageHeader,
   PageShell,
 } from "@/components/app/page-shell";
+import { FilmLeader } from "@/components/app/film-leader";
 import { ShotFrame } from "@/components/app/shot-frame";
 import { useStudio } from "@/components/app/studio-context";
 import { STATUS_DOT_CLASSES } from "@/components/app/status-pill";
@@ -42,10 +42,7 @@ export default function StudioHomePage() {
       />
 
       {productions === undefined ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Skeleton className="h-36" />
-          <Skeleton className="h-36" />
-        </div>
+        <FilmLeader label="Loading productions" />
       ) : productions.length === 0 ? (
         <EmptyState title={copy.empty.productions}>
           {canManage && (
@@ -56,8 +53,13 @@ export default function StudioHomePage() {
         </EmptyState>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-          {productions.map((p) => (
-            <Link key={p._id} href={`/p/${p._id}`} className="group block">
+          {productions.map((p, i) => (
+            <Link
+              key={p._id}
+              href={`/p/${p._id}`}
+              className="group gate-weave block"
+              style={{ animationDelay: `${i * 60}ms` }}
+            >
               {/* The production's face: a frame from work that has been
                   decided. This screen carried no picture at all before —
                   a wall of text in a tool for film. */}
@@ -68,6 +70,9 @@ export default function StudioHomePage() {
                   status={p.status === "active" ? "picked" : undefined}
                   label={p.coverThumbUrl ? undefined : p.code}
                   framed={false}
+                  // A poster is allowed to be showy — there is no frame here
+                  // anyone is colour-judging.
+                  poster
                   className="transition-transform duration-300 group-hover:scale-[1.02]"
                 />
               </div>

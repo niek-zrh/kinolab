@@ -76,6 +76,8 @@ export function SlateFill({
   status,
   size = "md",
   label,
+  /** Showy: heavier grain and a wider bloom. For posters, not for the sheet. */
+  poster = false,
   className,
 }: {
   /** Seeds the fill. Not rendered — see `label`. */
@@ -89,6 +91,7 @@ export function SlateFill({
    * as texture — and made every getByText(code) ambiguous.
    */
   label?: string;
+  poster?: boolean;
   className?: string;
 }) {
   const seed = seedOf(code);
@@ -96,16 +99,37 @@ export function SlateFill({
   // varied, not noisy.
   const angle = 115 + (seed % 5) * 25;
   const tint = status ? STATUS_VAR[status] : "var(--color-chart-5)";
+
+  // A gradient MESH rather than one sweep: two blooms at seeded positions
+  // over a base wash. Deterministic, so a shot's fill never changes under
+  // someone mid-review, and distinct enough that a sheet of not-yet-shot
+  // frames reads as a set of different shots rather than one tile repeated.
+  const bx = 18 + (seed % 7) * 9;
+  const by = 20 + ((seed >> 3) % 5) * 12;
+  const cx = 60 + ((seed >> 5) % 6) * 6;
+  const cy = 55 + ((seed >> 7) % 4) * 10;
+
   const style = {
-    backgroundImage: `linear-gradient(${angle}deg,
-      color-mix(in oklab, ${tint} 16%, var(--muted)) 0%,
-      var(--muted) 52%,
-      color-mix(in oklab, ${tint} 7%, var(--muted)) 100%)`,
+    "--halo-x": `${bx}%`,
+    "--halo-y": `${by}%`,
+    "--halo-tint": "var(--color-tape)",
+    backgroundImage: [
+      `radial-gradient(40% 50% at ${bx}% ${by}%, color-mix(in oklab, ${tint} ${poster ? 42 : 24}%, transparent), transparent 70%)`,
+      `radial-gradient(35% 45% at ${cx}% ${cy}%, color-mix(in oklab, var(--color-chart-1) ${poster ? 30 : 16}%, transparent), transparent 72%)`,
+      `linear-gradient(${angle}deg,
+        color-mix(in oklab, ${tint} 16%, var(--muted)) 0%,
+        var(--muted) 52%,
+        color-mix(in oklab, ${tint} 7%, var(--muted)) 100%)`,
+    ].join(", "),
   } as CSSProperties;
 
   return (
     <div
-      className={cn("relative size-full overflow-hidden bg-muted", className)}
+      className={cn(
+        "relative size-full overflow-hidden bg-muted film-grain",
+        poster && "film-grain-strong halation",
+        className,
+      )}
       style={style}
     >
       <Perforations count={PERFS[size]} className="top-0" />
@@ -141,6 +165,7 @@ export function ShotFrame({
   video = false,
   overlay,
   framed = true,
+  poster = false,
   className,
 }: {
   code: string;
@@ -154,6 +179,8 @@ export function ShotFrame({
   overlay?: ReactNode;
   /** The hairline + letterbox from .thumb-frame; off when the parent draws it. */
   framed?: boolean;
+  /** Heavier treatment for hero-sized frames. See SlateFill. */
+  poster?: boolean;
   className?: string;
 }) {
   return (
@@ -174,7 +201,13 @@ export function ShotFrame({
           className={cn("size-full object-cover", video && "opacity-80")}
         />
       ) : (
-        <SlateFill code={code} status={status} size={size} label={label} />
+        <SlateFill
+          code={code}
+          status={status}
+          size={size}
+          label={label}
+          poster={poster}
+        />
       )}
       {overlay}
     </div>
