@@ -6,9 +6,13 @@ import Link from "next/link";
 import { Plus, HardDrive } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/app/empty-state";
+import {
+  PageHeader,
+  PageShell,
+} from "@/components/app/page-shell";
+import { ShotFrame } from "@/components/app/shot-frame";
 import { useStudio } from "@/components/app/studio-context";
 import { STATUS_DOT_CLASSES } from "@/components/app/status-pill";
 import { SHOT_STATUSES, type ShotStatusKey } from "@/convex/lib/domain";
@@ -24,17 +28,18 @@ export default function StudioHomePage() {
   const canManage = role === "owner" || role === "producer";
 
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-display text-2xl font-semibold tracking-tight">
-          Productions
-        </h1>
-        {canManage && (
-          <Link href="/new" className={buttonVariants({ size: "sm" })}>
-            <Plus className="size-4" /> {copy.actions.newProduction}
-          </Link>
-        )}
-      </div>
+    <PageShell width="sheet">
+      <PageHeader
+        title="Productions"
+        favoriteLabel="Productions"
+        actions={
+          canManage ? (
+            <Link href="/new" className={buttonVariants({ size: "sm" })}>
+              <Plus className="size-4" /> {copy.actions.newProduction}
+            </Link>
+          ) : undefined
+        }
+      />
 
       {productions === undefined ? (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -50,45 +55,63 @@ export default function StudioHomePage() {
           )}
         </EmptyState>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {productions.map((p) => (
-            <Link key={p._id} href={`/p/${p._id}`}>
-              <Card className="h-full gap-3 p-5 transition-shadow duration-150 hover:shadow-md">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h2 className="font-display text-lg font-semibold leading-tight">
-                      {p.name}
-                    </h2>
-                    <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-                      {p.code} · {p.kind === "episodic" ? "Series" : "Feature"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
+            <Link key={p._id} href={`/p/${p._id}`} className="group block">
+              {/* The production's face: a frame from work that has been
+                  decided. This screen carried no picture at all before —
+                  a wall of text in a tool for film. */}
+              <div className="relative overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10 transition-all duration-150 group-hover:ring-foreground/25">
+                <ShotFrame
+                  code={p.code}
+                  src={p.coverThumbUrl}
+                  status={p.status === "active" ? "picked" : undefined}
+                  label={p.coverThumbUrl ? undefined : p.code}
+                  framed={false}
+                  className="transition-transform duration-300 group-hover:scale-[1.02]"
+                />
+              </div>
+              {/* Caption below the frame, not over it — the same rule the
+                  contact sheet follows. A still carries its own burned-in
+                  slate bottom-left, and two pieces of text in one corner are
+                  unreadable (the seeded covers show exactly that). */}
+              <div className="mt-2 px-0.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="truncate font-display text-lg font-semibold leading-tight">
+                    {p.name}
+                  </h2>
+                  <span className="flex shrink-0 items-center gap-1.5">
                     {p.hubConnected && (
                       <HardDrive className="size-3.5 text-muted-foreground" />
                     )}
-                    <Badge
-                      variant={p.status === "active" ? "secondary" : "outline"}
-                      className="capitalize"
-                    >
-                      {p.status}
-                    </Badge>
-                  </div>
+                    {p.status !== "active" && (
+                      <Badge variant="outline" className="capitalize">
+                        {p.status}
+                      </Badge>
+                    )}
+                  </span>
                 </div>
-                <ShotBar byStatus={p.shotCounts.byStatus} total={p.shotCounts.total} />
-                <p className="text-xs text-muted-foreground">
-                  {/* listForStudio bounds how many shots it counts per
-                      production, so say "800+" rather than showing a
-                      saturated count as if it were the real one. */}
+                <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                  {p.code} · {p.kind === "episodic" ? "Series" : "Feature"}
+                  {/* listForStudio bounds how many shots it counts, so say
+                      "800+" rather than presenting a saturated count as the
+                      real one. */}
+                  {" · "}
                   {p.shotCounts.total}
                   {p.shotCountsCapped ? "+" : ""} shots
                 </p>
-              </Card>
+                <div className="mt-2">
+                  <ShotBar
+                    byStatus={p.shotCounts.byStatus}
+                    total={p.shotCounts.total}
+                  />
+                </div>
+              </div>
             </Link>
           ))}
         </div>
       )}
-    </main>
+    </PageShell>
   );
 }
 

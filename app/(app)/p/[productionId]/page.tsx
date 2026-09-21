@@ -8,6 +8,7 @@ import {
 } from "@/components/app/page-shell";
 
 import { OverviewVitals } from "./_components/overview-vitals";
+import { OverviewReel } from "./_components/overview-reel";
 import { OverviewStageStrip } from "./_components/overview-stage-strip";
 import { OverviewShotSummary } from "./_components/overview-shot-summary";
 import { OverviewActivity } from "./_components/overview-activity";
@@ -27,6 +28,8 @@ export default function ProductionOverviewPage() {
   return (
     <PageShell>
         <OverviewVitals productionId={productionId} />
+        {/* The work first, then the numbers, then the paper trail. */}
+        <OverviewReel productionId={productionId} />
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-8">
             <OverviewStageStrip productionId={productionId} />

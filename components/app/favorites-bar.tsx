@@ -19,14 +19,23 @@ export function FavoritesBar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  if (favorites.length === 0) return null;
-
   const query = searchParams.toString();
   const here = query ? `${pathname}?${query}` : pathname;
 
   return (
-    <div className="hidden min-w-0 items-center gap-0.5 md:flex">
+    <div
+      aria-label="Favourites"
+      className="ml-1 hidden min-w-0 items-center gap-0.5 rounded-lg border border-border/70 bg-muted/30 px-1.5 py-0.5 md:flex"
+    >
       <Star className="mr-1 size-3 shrink-0 text-muted-foreground/60" aria-hidden />
+      {/* The strip is always here, empty or not: a bar that appears only
+          once you have used it cannot teach you that it exists. Empty, it
+          says where pinned pages land. */}
+      {favorites.length === 0 && (
+        <span className="whitespace-nowrap px-1 py-1 text-xs text-muted-foreground/70">
+          Star a page to pin it here
+        </span>
+      )}
       {favorites.map((favorite) => {
         const active = favorite.href === here;
         return (

@@ -7,10 +7,14 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, type ReactNode } from "react";
 import { Brush, CalendarDays, Layers } from "lucide-react";
+import type { CSSProperties } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/app/empty-state";
 import { ShotFrame } from "@/components/app/shot-frame";
-import { StatusPill } from "@/components/app/status-pill";
+import {
+  STATUS_DOT_CLASSES,
+  STATUS_VAR,
+} from "@/components/app/status-pill";
 import { useStudio } from "@/components/app/studio-context";
 import type { ShotStatusKey } from "@/convex/lib/domain";
 import { formatDueDate } from "../board/_components/board-helpers";
@@ -93,7 +97,13 @@ const STATUS_URGENCY: Partial<Record<ShotStatusKey, number>> = {
   planned: 1,
 };
 
-function WorkRow({ shot, today }: { shot: ShotRow; today: string }) {
+/**
+ * A card, not a row. My work used to be a list of 56px thumbnails beside
+ * text — the shot as a database record. At this size you recognise the frame
+ * before you read the code, which is the whole point of assigning work by
+ * picture.
+ */
+function WorkCard({ shot, today }: { shot: ShotRow; today: string }) {
   const href = `/p/${shot.productionId}/shots/${shot._id}`;
   // Same rule and colour as the Shots table's due cell: a date only turns red
   // once it has actually passed, and never on settled work.
@@ -103,48 +113,52 @@ function WorkRow({ shot, today }: { shot: ShotRow; today: string }) {
     !SETTLED_STATUSES.includes(shot.status);
 
   return (
-    <Link
-      href={href}
-      className="group flex items-center gap-3 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring/60"
-    >
-      <span className="w-14 shrink-0 overflow-hidden rounded-[3px]">
+    <Link href={href} className="group block outline-none">
+      <div
+        style={{ borderTopColor: STATUS_VAR[shot.status] } as CSSProperties}
+        className="relative overflow-hidden rounded-lg border-t-2 bg-muted ring-1 ring-foreground/10 transition-all duration-150 group-hover:ring-foreground/25 group-focus-visible:ring-2 group-focus-visible:ring-ring"
+      >
         <ShotFrame
           code={shot.code}
           src={shot.coverThumbUrl}
           status={shot.status}
-          size="sm"
+          label={shot.coverThumbUrl ? undefined : shot.code}
           framed={false}
+          className="transition-transform duration-200 group-hover:scale-[1.02]"
         />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-2">
-          <span className="truncate font-mono text-xs font-medium">
-            {shot.code}
-          </span>
-          <span className="truncate text-[13px] text-muted-foreground">
-            {shot.title ?? ""}
-          </span>
-        </span>
-        <span className="mt-0.5 flex items-center gap-2.5 text-[11px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <Layers className="size-3" />
-            {shot.versionsCount}
-          </span>
-          {shot.scene && <span className="font-mono">{shot.scene.code}</span>}
+        <span
+          aria-hidden
+          className={cn(
+            "absolute right-2 top-2 size-2.5 rounded-full ring-2 ring-background/70",
+            STATUS_DOT_CLASSES[shot.status],
+          )}
+        />
+      </div>
+      <div className="mt-1.5 px-0.5">
+        <p className="truncate text-[13px] leading-tight text-foreground/90">
+          {shot.title ?? <span className="text-muted-foreground">Untitled</span>}
+        </p>
+        <p className="mt-0.5 flex items-center gap-2 truncate font-mono text-[11px] text-muted-foreground">
+          <span className="truncate">{shot.code}</span>
+          {shot.versionsCount > 0 && (
+            <span className="inline-flex shrink-0 items-center gap-1">
+              <Layers className="size-3" />
+              {shot.versionsCount}
+            </span>
+          )}
           {shot.dueDate && (
             <span
               className={cn(
-                "inline-flex items-center gap-1",
-                overdue && "text-destructive",
+                "inline-flex shrink-0 items-center gap-1",
+                overdue && "font-sans font-medium text-destructive",
               )}
             >
               <CalendarDays className="size-3" />
               {formatDueDate(shot.dueDate)}
             </span>
           )}
-        </span>
-      </span>
-      <StatusPill status={shot.status} size="xs" />
+        </p>
+      </div>
     </Link>
   );
 }
@@ -179,9 +193,9 @@ function Section({
         </span>
       </div>
       <p className="mb-2 px-2 text-[11px] text-muted-foreground">{blurb}</p>
-      <div className="space-y-0.5">
+      <div className="grid grid-cols-1 gap-3 px-2 pb-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {shots.map((shot) => (
-          <WorkRow key={shot._id} shot={shot} today={today} />
+          <WorkCard key={shot._id} shot={shot} today={today} />
         ))}
       </div>
     </section>
@@ -189,7 +203,7 @@ function Section({
 }
 
 function Frame({ children }: { children: ReactNode }) {
-  return <PageShell>{children}</PageShell>;
+  return <PageShell width="sheet">{children}</PageShell>;
 }
 
 export default function MyWorkPage() {

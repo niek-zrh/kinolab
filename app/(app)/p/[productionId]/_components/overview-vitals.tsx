@@ -4,18 +4,13 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ShotFrame } from "@/components/app/shot-frame";
 import { STATUS_DOT_CLASSES } from "@/components/app/status-pill";
 import type { ShotStatusKey } from "@/convex/lib/domain";
 import { cn } from "@/lib/utils";
 
 const DONE_STATUSES = new Set<ShotStatusKey>(["approved", "final", "delivered"]);
 const REVIEW_STATUSES = new Set<ShotStatusKey>(["options_ready", "in_review"]);
-
-/** How many picked frames the strip shows before it stops. */
-const STRIP_MAX = 6;
 
 /**
  * Share of the production that is signed off, as a dial rather than a
@@ -99,8 +94,9 @@ function Vital({
  * heading, how far the production has got, the two or three numbers a
  * producer opens the app for, and the picked frames themselves.
  *
- * The frames matter as much as the numbers — this is a film tool, and before
- * v1.2 the overview could be read top to bottom without seeing a single image.
+ * The frames themselves moved out to <OverviewReel> in v1.5, which shows the
+ * same work directly below this band at a size worth looking at — two strips
+ * of the same thumbnails was one too many.
  */
 export function OverviewVitals({
   productionId,
@@ -117,10 +113,6 @@ export function OverviewVitals({
   const needsYou = (pending ?? []).filter(
     (a) => a.productionId === productionId,
   ).length;
-
-  const picked = live
-    .filter((s) => s.pickedVersionId !== undefined)
-    .slice(0, STRIP_MAX);
 
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-4 rounded-xl bg-card px-4 py-3.5 ring-1 ring-foreground/10">
@@ -185,35 +177,6 @@ export function OverviewVitals({
         </div>
       </div>
 
-      {picked.length > 0 && (
-        <div className="min-w-0">
-          <Link
-            href={`/p/${productionId}/decisions`}
-            className="group mb-1.5 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Picked
-            <ArrowUpRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
-          </Link>
-          <div className="flex items-center gap-1.5">
-            {picked.map((shot) => (
-              <Link
-                key={shot._id}
-                href={`/p/${productionId}/review/${shot._id}`}
-                title={`${shot.code} — picked`}
-                className="w-16 shrink-0 overflow-hidden rounded-[3px] outline-none ring-1 ring-tape/40 transition-shadow hover:ring-2 hover:ring-tape focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <ShotFrame
-                  code={shot.code}
-                  src={shot.coverThumbUrl}
-                  status={shot.status}
-                  size="sm"
-                  framed={false}
-                />
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

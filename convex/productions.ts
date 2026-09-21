@@ -211,6 +211,19 @@ const MAX_COUNTED_SHOTS_PER_PRODUCTION = 800;
  *   min(800, floor(3200 / productions.length))
  * so a caller can render "800+" by comparing `total` to it.
  */
+/**
+ * Which shot gets to be the production's cover, best first. Only decided
+ * work qualifies: a candidate nobody has chosen is not the film's face. Ties
+ * break on whichever the index reaches first, which is stable enough for a
+ * tile and costs no sorting.
+ */
+const COVER_RANK: Partial<Record<Doc<"shots">["status"], number>> = {
+  delivered: 0,
+  final: 1,
+  approved: 2,
+  picked: 3,
+};
+
 export const listForStudio = query({
   args: { studioId: v.id("studios") },
   handler: async (ctx, args) => {
@@ -234,6 +247,12 @@ export const listForStudio = query({
         const byStatus: Record<string, number> = {};
         let total = 0;
         let scanned = 0; // the ceiling bounds reads, counted or not
+        // The production's face on the home screen: the cover of a shot that
+        // has been decided, so a tile shows work the studio stands behind
+        // rather than the first thing anyone happened to upload. Picked up
+        // during the same scan — no extra pass over the table.
+        let coverAssetId: Id<"assets"> | undefined;
+        let coverRank = Infinity;
         for await (const shot of ctx.db
           .query("shots")
           .withIndex("by_production", (q) =>
@@ -245,14 +264,35 @@ export const listForStudio = query({
             byStatus[shot.status] = (byStatus[shot.status] ?? 0) + 1;
             total += 1;
           }
+          const rank = COVER_RANK[shot.status];
+          if (
+            shot.coverAssetId !== undefined &&
+            rank !== undefined &&
+            rank < coverRank
+          ) {
+            coverAssetId = shot.coverAssetId;
+            coverRank = rank;
+          }
           if (scanned >= ceiling) break;
         }
+
+        // One extra document + one storage URL per production, only when a
+        // decided shot with a cover was found.
+        let coverThumbUrl: string | null = null;
+        if (coverAssetId !== undefined) {
+          const asset = await ctx.db.get(coverAssetId);
+          if (asset?.thumbStorageId !== undefined) {
+            coverThumbUrl = await ctx.storage.getUrl(asset.thumbStorageId);
+          }
+        }
+
         return {
           ...publicProduction(production),
           shotCounts: { total, byStatus },
           // Additive: lets the home page render "800+" instead of quietly
           // presenting a saturated count as the real one.
           shotCountsCapped: scanned >= ceiling,
+          coverThumbUrl,
         };
       }),
     );
