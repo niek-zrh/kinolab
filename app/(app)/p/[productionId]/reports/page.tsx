@@ -4,6 +4,11 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import {
+  PageHeader,
+  PageShell,
+} from "@/components/app/page-shell";
+
 import type { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
 import { FileText, RefreshCw } from "lucide-react";
@@ -49,15 +54,12 @@ export default function ReportsPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-6">
-      <div className="mb-6">
-        <h1 className="font-display text-2xl font-semibold tracking-tight">
-          Daily reports
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          The day&apos;s activity, compiled at 18:00 production time.
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Daily reports"
+        description="The day's activity, compiled at 18:00 production time."
+        favoriteLabel="Daily reports"
+      />
 
       {reports !== undefined && reports.length === 0 ? (
         <EmptyState icon={<FileText />} title={copy.empty.reports}>
@@ -110,6 +112,6 @@ export default function ReportsPage() {
           </section>
         </div>
       )}
-    </main>
+    </PageShell>
   );
 }

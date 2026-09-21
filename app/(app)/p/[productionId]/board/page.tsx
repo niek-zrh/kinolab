@@ -10,6 +10,11 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { STAGES, type ShotStatusKey, type StageKey } from "@/convex/lib/domain";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  PageHeader,
+  PageShell,
+} from "@/components/app/page-shell";
+
 import { EmptyState } from "@/components/app/empty-state";
 import { useStudio } from "@/components/app/studio-context";
 import { copy } from "@/lib/copy";
@@ -187,12 +192,13 @@ export default function BoardPage() {
   const loading = stages === undefined || shots === undefined;
 
   return (
-    <main className="flex-1 px-6 py-6">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h1 className="font-display text-xl font-semibold tracking-tight">
-          Board
-          {shots !== undefined && (
-            <span className="ml-2 font-sans text-sm font-normal text-muted-foreground">
+    <PageShell width="sheet">
+      <PageHeader
+        title="Board"
+        favoriteLabel="Board"
+        meta={
+          shots !== undefined ? (
+            <>
               {shots.length}
               {/* shots.list caps at MAX_LIST_SHOTS — the same marker the Shots
                   page shows, rather than quietly showing a subset. */}
@@ -209,18 +215,20 @@ export default function BoardPage() {
                   )
                 </>
               )}
-            </span>
-          )}
-        </h1>
-        <div className="flex items-center gap-3">
-          {canDrag && (
-            <p className="hidden text-xs text-muted-foreground lg:block">
-              Drag shots between stages — stages can run in parallel.
-            </p>
-          )}
-          <ViewToggle view={view} onChange={changeView} />
-        </div>
-      </div>
+            </>
+          ) : undefined
+        }
+        actions={
+          <>
+            {canDrag && (
+              <p className="hidden text-xs text-muted-foreground lg:block">
+                Drag shots between stages — stages can run in parallel.
+              </p>
+            )}
+            <ViewToggle view={view} onChange={changeView} />
+          </>
+        }
+      />
 
       {loading ? (
         <div className="flex gap-3 overflow-x-hidden">
@@ -259,7 +267,7 @@ export default function BoardPage() {
           </div>
         </>
       )}
-    </main>
+    </PageShell>
   );
 }
 

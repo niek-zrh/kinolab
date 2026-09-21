@@ -2,6 +2,11 @@
 
 import { useParams } from "next/navigation";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+  PageHeader,
+  PageShell,
+} from "@/components/app/page-shell";
+
 import { OverviewVitals } from "./_components/overview-vitals";
 import { OverviewStageStrip } from "./_components/overview-stage-strip";
 import { OverviewShotSummary } from "./_components/overview-shot-summary";
@@ -20,8 +25,7 @@ export default function ProductionOverviewPage() {
   const productionId = params.productionId as Id<"productions">;
 
   return (
-    <main className="flex-1 px-6 py-6">
-      <div className="mx-auto w-full max-w-6xl">
+    <PageShell>
         <OverviewVitals productionId={productionId} />
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-8">
@@ -35,7 +39,6 @@ export default function ProductionOverviewPage() {
             <OverviewReportTeaser productionId={productionId} />
           </div>
         </div>
-      </div>
-    </main>
+    </PageShell>
   );
 }

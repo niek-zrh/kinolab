@@ -11,6 +11,11 @@ import { Clapperboard, Layers } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/app/empty-state";
+import {
+  PageHeader,
+  PageShell,
+} from "@/components/app/page-shell";
+
 import { ShotFrame } from "@/components/app/shot-frame";
 import { SlateStrip } from "@/components/app/slate-strip";
 import { UserAvatar } from "@/components/app/user-avatar";
@@ -109,15 +114,12 @@ export default function ReviewQueuePage() {
   }, [shots, slotShots, pickActivity, production]);
 
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-6">
-      <div className="mb-6">
-        <h1 className="font-display text-2xl font-semibold tracking-tight">
-          Review
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Options waiting for a decision. Open a shot to compare and pick.
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Review"
+        description="Options waiting for a decision. Open a shot to compare and pick."
+        favoriteLabel="Review"
+      />
 
       {queue === undefined || characterQueue === undefined ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -186,7 +188,7 @@ export default function ReviewQueuePage() {
           </div>
         </section>
       )}
-    </main>
+    </PageShell>
   );
 }
 

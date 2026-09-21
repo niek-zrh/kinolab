@@ -4,6 +4,11 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import {
+  PageHeader,
+  PageShell,
+} from "@/components/app/page-shell";
+
 import type { Id } from "@/convex/_generated/dataModel";
 import { ChevronRight, ClipboardCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -33,16 +38,14 @@ export default function QcPage() {
   const runs = useQuery(api.qc.listRuns, { productionId });
 
   return (
-    <main className="flex-1 px-6 py-6">
-      <div className="mx-auto w-full max-w-4xl">
-        <div className="mb-6 flex items-start justify-between gap-3">
+    <PageShell width="reading">
+      <div className="mb-6 flex items-start justify-between gap-3">
           <div>
-            <h1 className="font-display text-2xl font-semibold tracking-tight">
-              Delivery QC
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Check masters against the studio template before they ship.
-            </p>
+            <PageHeader
+              title="Delivery QC"
+              description="Check masters against the studio template before they ship."
+              favoriteLabel="Delivery QC"
+            />
           </div>
           {canRunQc && <NewRunDialog productionId={productionId} />}
         </div>
@@ -97,8 +100,7 @@ export default function QcPage() {
         )}
 
         <TemplateSection />
-      </div>
-    </main>
+    </PageShell>
   );
 }
 

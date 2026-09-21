@@ -19,6 +19,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppearanceMenuItems } from "./appearance-control";
 import { CommandPalette } from "./command-palette";
+import { FavoritesBar } from "./favorites-bar";
 import { CreateStudio } from "./create-studio";
 import { KeyboardOverlay } from "./keyboard-overlay";
 import { NotificationsBell } from "./notifications-bell";
@@ -93,6 +94,8 @@ function Shell({ children }: { children: ReactNode }) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <FavoritesBar />
 
         <div className="ml-auto flex items-center gap-1">
           <Button

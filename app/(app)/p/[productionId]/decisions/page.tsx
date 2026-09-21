@@ -3,6 +3,11 @@
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import {
+  PageHeader,
+  PageShell,
+} from "@/components/app/page-shell";
+
 import type { Id } from "@/convex/_generated/dataModel";
 import { NeedsDecision } from "./_components/needs-decision";
 import { LedgerSection } from "./_components/ledger-table";
@@ -19,17 +24,12 @@ export default function DecisionsPage() {
   const production = useQuery(api.productions.get, { productionId });
 
   return (
-    <main className="flex-1 px-6 py-6">
-      <div className="mx-auto w-full max-w-5xl">
-        <div className="mb-6">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">
-            Decisions
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Who decided what, when — gates, picks, shots and delivery
-            sign-offs.
-          </p>
-        </div>
+    <PageShell>
+      <PageHeader
+        title="Decisions"
+        description="Who decided what, when — gates, picks, shots and delivery sign-offs."
+        favoriteLabel="Decisions"
+      />
 
         <NeedsDecision productionId={productionId} />
         <LedgerSection
@@ -37,7 +37,6 @@ export default function DecisionsPage() {
           productionCode={production?.code}
           productionTimezone={production?.timezone}
         />
-      </div>
-    </main>
+    </PageShell>
   );
 }

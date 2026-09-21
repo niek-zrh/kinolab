@@ -36,6 +36,11 @@ import {
 } from "@/convex/lib/domain";
 import { useHotkeys } from "@/lib/hooks/use-hotkeys";
 import { todayInTz } from "@/lib/format";
+import {
+  PageHeader,
+  PageShell,
+} from "@/components/app/page-shell";
+
 import { cn } from "@/lib/utils";
 import { isContentEditor } from "./_components/shots-common";
 import { ShotsFilters } from "./_components/shots-filters";
@@ -142,28 +147,26 @@ function ShotsScreen() {
   const episodes = production?.episodes;
 
   return (
-    <main className="flex-1 px-6 py-6">
-      <div
-        className={cn(
-          "mx-auto w-full",
-          // A contact sheet wants the whole monitor; a table of text does
-          // not — past ~1150px the rows just get harder to track across.
-          view === "grid" ? "max-w-[1800px]" : "max-w-6xl",
-        )}
-      >
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="font-display text-xl font-semibold tracking-tight">
-            Shots
-            {shots !== undefined && (
-              <span className="ml-2 font-sans text-sm font-normal text-muted-foreground">
+    <PageShell
+      // The sheet takes the monitor, the table keeps a reading measure — but
+      // both are left-aligned, so the heading does not slide when you toggle.
+      width={view === "grid" ? "sheet" : "wide"}
+    >
+        <PageHeader
+          title="Shots"
+          meta={
+            shots !== undefined ? (
+              <>
                 {shots.length}
                 {/* shots.list caps at MAX_LIST_SHOTS so a huge production can
                     still open; say so rather than quietly showing a subset. */}
                 {shots.length >= 1000 && " (first 1000 — narrow with a filter)"}
-              </span>
-            )}
-          </h1>
-          <div className="flex items-center gap-2">
+              </>
+            ) : undefined
+          }
+          favoriteLabel="Shots"
+          actions={
+            <>
             <ViewToggle view={view} onChange={changeView} />
             {canCreate && (
               <div className="inline-flex items-center" role="group" aria-label="Add shots">
@@ -198,8 +201,9 @@ function ShotsScreen() {
                 </DropdownMenu>
               </div>
             )}
-          </div>
-        </div>
+            </>
+          }
+        />
 
         <ShotsFilters
           scenes={scenes}
@@ -265,7 +269,6 @@ function ShotsScreen() {
             today={today}
           />
         )}
-      </div>
 
       {canCreate && (
         <>
@@ -292,7 +295,7 @@ function ShotsScreen() {
           />
         </>
       )}
-    </main>
+    </PageShell>
   );
 }
 

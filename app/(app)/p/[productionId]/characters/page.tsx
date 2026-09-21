@@ -9,6 +9,11 @@ import { ClipboardList, Plus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/app/empty-state";
+import {
+  PageHeader,
+  PageShell,
+} from "@/components/app/page-shell";
+
 import { useStudio } from "@/components/app/studio-context";
 import { MAX_LIST_ELEMENTS } from "@/convex/lib/domain";
 import { useHotkeys } from "@/lib/hooks/use-hotkeys";
@@ -48,28 +53,24 @@ export default function CharactersPage() {
   const capped = rows !== undefined && rows.length >= MAX_LIST_ELEMENTS;
 
   return (
-    <main className="flex-1 px-6 py-6">
-      <div className="mx-auto w-full max-w-6xl">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="font-display text-xl font-semibold tracking-tight">
-              Characters
-              {rows !== undefined && (
-                // The literal space keeps the accessible name "Characters · 3".
-                <span className="ml-1 font-sans text-sm font-normal text-muted-foreground">
-                  {" "}· {rows.length}
-                  {/* elements.list caps at MAX_LIST_ELEMENTS; say so rather
-                      than quietly showing a subset. */}
-                  {capped && ` (first ${MAX_LIST_ELEMENTS})`}
-                </span>
-              )}
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              One row per character; Concept and Animation each collect
-              options, shortlist and pick like a shot.
-            </p>
-          </div>
-          {canEdit && (
+    <PageShell>
+        <PageHeader
+          title="Characters"
+          favoriteLabel="Characters"
+          meta={
+            rows !== undefined ? (
+              // The literal space keeps the accessible name "Characters · 3".
+              <>
+                · {rows.length}
+                {/* elements.list caps at MAX_LIST_ELEMENTS; say so rather
+                    than quietly showing a subset. */}
+                {capped && ` (first ${MAX_LIST_ELEMENTS})`}
+              </>
+            ) : undefined
+          }
+          description="One row per character; Concept and Animation each collect options, shortlist and pick like a shot."
+          actions={
+            canEdit ? (
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -86,8 +87,9 @@ export default function CharactersPage() {
                 <Plus /> New character
               </Button>
             </div>
-          )}
-        </div>
+            ) : undefined
+          }
+        />
 
         {rows === undefined ? (
           <div className="space-y-2">
@@ -119,7 +121,6 @@ export default function CharactersPage() {
             )}
           </>
         )}
-      </div>
 
       {canEdit && (
         <>
@@ -135,6 +136,6 @@ export default function CharactersPage() {
           />
         </>
       )}
-    </main>
+    </PageShell>
   );
 }

@@ -755,7 +755,11 @@ test("F2 assign from the card notifies the member; F8 artist gets the menu only 
     artistPage.getByRole("button", { name: `Actions for ${CODES[1]}` }),
   ).toHaveCount(0);
   // No stage-status selects or gate menus either (permissions.spec asserts the same).
-  await expect(artistPage.locator('[aria-label$=" menu"]')).toHaveCount(0);
+  // Scoped to `main`: the rail's own collapse / customise controls are
+  // also labelled "… menu" and are not a stage's menu.
+  await expect(
+    artistPage.locator('main [aria-label$=" menu"]'),
+  ).toHaveCount(0);
 
   await openCardMenu(code, artistPage);
   await artistPage

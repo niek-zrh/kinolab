@@ -14,6 +14,11 @@ import { EmptyState } from "@/components/app/empty-state";
 import { useStudio } from "@/components/app/studio-context";
 import { HUB_FOLDERS } from "@/convex/lib/domain";
 import { copy } from "@/lib/copy";
+import {
+  PageHeader,
+  PageShell,
+} from "@/components/app/page-shell";
+
 import { useHotkeys } from "@/lib/hooks/use-hotkeys";
 import { FilesAttachDialog } from "./_components/files-attach-dialog";
 import {
@@ -175,17 +180,16 @@ export default function FilesPage() {
   const filtered = filter !== "all" || search.trim().length > 0;
 
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-6">
-      <div className="mb-5">
-        <h1 className="font-display text-2xl font-semibold tracking-tight">
-          {copy.nav.files}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {hubConnected && connection?.hub.ownerEmail !== undefined
+    <PageShell>
+      <PageHeader
+        title={copy.nav.files}
+        description={
+          hubConnected && connection?.hub.ownerEmail !== undefined
             ? `Synced from the Drive hub — ${connection.hub.ownerEmail}`
-            : copy.tagline}
-        </p>
-      </div>
+            : copy.tagline
+        }
+        favoriteLabel={copy.nav.files}
+      />
 
       {hubRevoked && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-status-rework/30 bg-status-rework/10 px-3 py-2 text-sm text-status-rework">
@@ -301,6 +305,6 @@ export default function FilesPage() {
         productionId={productionId}
         onClose={() => setAttachAsset(null)}
       />
-    </main>
+    </PageShell>
   );
 }

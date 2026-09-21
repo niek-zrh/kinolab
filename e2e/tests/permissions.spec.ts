@@ -218,7 +218,7 @@ test.describe.serial("permissions", () => {
       ownerPage.locator('[aria-label$=" status"]').first(),
     ).toBeVisible();
     await expect(
-      ownerPage.locator('[aria-label$=" menu"]').first(),
+      ownerPage.locator('main [aria-label$=" menu"]').first(),
     ).toBeVisible();
 
     await inviteMemberLocal(ownerPage, artistEmail, "Artist");
@@ -271,7 +271,11 @@ test.describe.serial("permissions", () => {
     // Column status is a plain read-only chip for artists…
     await expect(artistPage!.locator('[aria-label$=" status"]')).toHaveCount(0);
     // …and there is no column menu (request sign-off / approve / reject).
-    await expect(artistPage!.locator('[aria-label$=" menu"]')).toHaveCount(0);
+    // Scoped to `main`: the rail's collapse / customise controls carry
+    // "… menu" labels of their own and are not stage menus.
+    await expect(
+      artistPage!.locator('main [aria-label$=" menu"]'),
+    ).toHaveCount(0);
   });
 
   test("artist can open the shot and sees the upload dropzone", async () => {

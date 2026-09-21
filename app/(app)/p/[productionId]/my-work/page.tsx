@@ -15,6 +15,11 @@ import { useStudio } from "@/components/app/studio-context";
 import type { ShotStatusKey } from "@/convex/lib/domain";
 import { formatDueDate } from "../board/_components/board-helpers";
 import { todayInTz } from "@/lib/format";
+import {
+  PageHeader,
+  PageShell,
+} from "@/components/app/page-shell";
+
 import { cn } from "@/lib/utils";
 
 type ShotRow = (typeof api.shots.list._returnType)[number];
@@ -184,11 +189,7 @@ function Section({
 }
 
 function Frame({ children }: { children: ReactNode }) {
-  return (
-    <main className="flex-1 px-6 py-6">
-      <div className="mx-auto w-full max-w-4xl">{children}</div>
-    </main>
-  );
+  return <PageShell>{children}</PageShell>;
 }
 
 export default function MyWorkPage() {
@@ -244,16 +245,17 @@ export default function MyWorkPage() {
 
   return (
     <Frame>
-      <div className="mb-4 flex items-baseline justify-between gap-3">
-        <h1 className="font-display text-xl font-semibold tracking-tight">
-          My work
-        </h1>
-        {byBucket && total > 0 && (
-          <span className="font-mono text-xs text-muted-foreground">
-            {total} assigned
-          </span>
-        )}
-      </div>
+      <PageHeader
+        title="My work"
+        favoriteLabel="My work"
+        actions={
+          byBucket && total > 0 ? (
+            <span className="font-mono text-xs text-muted-foreground">
+              {total} assigned
+            </span>
+          ) : undefined
+        }
+      />
 
       {byBucket === undefined ? (
         <div className="space-y-3">
