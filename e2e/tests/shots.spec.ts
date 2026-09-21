@@ -5,6 +5,7 @@ import {
   trackErrors,
   uniqueEmail,
   PASSWORD,
+  showShotsTable,
 } from "./helpers";
 
 /**
@@ -158,6 +159,7 @@ test.describe.serial("shots list", () => {
     await page.getByRole("button", { name: "Create 12 shots" }).click();
 
     await expect(page.getByText("Created 12 shots")).toBeVisible();
+    await showShotsTable(page);
     for (const code of CODES) {
       await expect(page.getByRole("link", { name: code })).toBeVisible();
     }

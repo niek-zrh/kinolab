@@ -13,6 +13,7 @@ import {
   trackErrors,
   uniqueEmail,
   PASSWORD,
+  showShotsTable,
 } from "./helpers";
 
 /**
@@ -231,6 +232,7 @@ test.describe.serial("new shots dialog + scene sheet", () => {
     sceneId = new URL(page.url()).searchParams.get("scene")!;
     expect(sceneId).toBeTruthy();
 
+    await showShotsTable(page);
     await expect(page.locator("tbody tr")).toHaveCount(5);
     const row = (code: string) =>
       page.locator("tbody tr").filter({ hasText: code });

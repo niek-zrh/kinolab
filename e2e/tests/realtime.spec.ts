@@ -13,6 +13,7 @@ import {
   uniqueEmail,
   uploadOptions,
   bulkCreateShots,
+  showShotsTable,
 } from "./helpers";
 
 /**
@@ -221,6 +222,7 @@ test("a status change by B on the shots table updates A's board live", async () 
 
   // B flips the shot to Rework from the shots table.
   await pageB.goto(`${base}/shots`);
+  await showShotsTable(pageB);
   await pageB.getByLabel(`Change status of ${SHOT_CODE}`).click();
   await pageB.getByRole("option", { name: "Rework" }).click();
   await expect(

@@ -45,11 +45,11 @@ const GROUPS: { label?: string; items: RailItem[] }[] = [
       { href: "", label: copy.nav.overview, icon: LayoutDashboard, exact: true },
       { href: "/board", label: copy.nav.board, icon: Columns3 },
       { href: "/shots", label: copy.nav.shots, icon: Film },
+      // Characters sits with the other content, not under a "Pre-production"
+      // heading: one item under a shouted section label read as filing-cabinet
+      // structure, and a character is a thing you make, like a shot.
+      { href: "/characters", label: copy.nav.characters, icon: Users },
     ],
-  },
-  {
-    label: copy.nav.preproduction,
-    items: [{ href: "/characters", label: copy.nav.characters, icon: Users }],
   },
   {
     items: [

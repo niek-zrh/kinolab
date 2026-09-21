@@ -144,6 +144,19 @@ export async function bulkCreateShots(page: Page, base: string, codes: string[])
   });
 }
 
+/**
+ * Switch the Shots page to the table. The contact sheet is the default view
+ * since v1.3, so a spec that asserts on `tbody tr` or the table's own row
+ * controls has to ask for the table rather than assume it. Idempotent: the
+ * toggle is a plain button and clicking the active one is a no-op.
+ */
+export async function showShotsTable(page: Page) {
+  const button = page.getByRole("button", { name: "Table view" });
+  await button.waitFor({ timeout: 20_000 });
+  await button.click();
+  await expect(page.locator("table")).toBeVisible({ timeout: 15_000 });
+}
+
 const PNG_RED =
   "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAGklEQVR4nGP8z8Dwn4GBgYGJAQowMTAwMAAAJgYBLZ01WQAAAABJRU5ErkJggg==";
 const PNG_BLUE =

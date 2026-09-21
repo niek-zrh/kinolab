@@ -16,7 +16,7 @@ import {
 } from "./helpers";
 
 /**
- * Characters (spec v2 item b, tests C1–C6): the Pre-production rail entry,
+ * Characters (spec v2 item b, tests C1–C6): the Characters rail entry,
  * the empty-state paste, New character with the auto-derived code and the
  * duplicate-code refusal, options on the Concept phase, a pick from the
  * Review Room reflected in the list (thumb, "Picked", Final › Open) and the
@@ -228,10 +228,12 @@ test.afterAll(async () => {
   await context?.close();
 });
 
-test("C1 rail shows Pre-production › Characters; pasting names creates rows; Shots and Board stay empty", async () => {
+test("C1 rail shows Characters; pasting names creates rows; Shots and Board stay empty", async () => {
   await gotoStable(page, base);
   const rail = page.locator("aside");
-  await expect(rail.getByText("Pre-production")).toBeVisible({
+  // Characters sits with the other content items — the "Pre-production"
+  // section heading above it was dropped in the v1.2 design pass.
+  await expect(rail.getByRole("link", { name: "Characters" })).toBeVisible({
     timeout: 20_000,
   });
   await rail.getByRole("link", { name: "Characters" }).click();

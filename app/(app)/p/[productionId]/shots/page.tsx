@@ -35,6 +35,7 @@ import {
   type StageKey,
 } from "@/convex/lib/domain";
 import { useHotkeys } from "@/lib/hooks/use-hotkeys";
+import { todayInTz } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { isContentEditor } from "./_components/shots-common";
 import { ShotsFilters } from "./_components/shots-filters";
@@ -106,7 +107,9 @@ function ShotsScreen() {
     episodeId: episodeParam ? (episodeParam as Id<"episodes">) : undefined,
   });
 
-  const [view, setView] = useState<ShotsView>("table");
+  // The sheet is the default view (v1.3): you find a shot by seeing it. The
+  // table is still one click away for spreadsheet work.
+  const [view, setView] = useState<ShotsView>("grid");
   useEffect(() => {
     const stored = localStorage.getItem(VIEW_KEY);
     if (stored === "grid" || stored === "table") setView(stored);
@@ -115,6 +118,10 @@ function ShotsScreen() {
     setView(next);
     localStorage.setItem(VIEW_KEY, next);
   };
+
+  const today = production?.timezone
+    ? todayInTz(production.timezone)
+    : new Date().toISOString().slice(0, 10);
 
   const canCreate = isContentEditor(role);
   const [newShotOpen, setNewShotOpen] = useState(false);
@@ -136,7 +143,14 @@ function ShotsScreen() {
 
   return (
     <main className="flex-1 px-6 py-6">
-      <div className="mx-auto w-full max-w-6xl">
+      <div
+        className={cn(
+          "mx-auto w-full",
+          // A contact sheet wants the whole monitor; a table of text does
+          // not — past ~1150px the rows just get harder to track across.
+          view === "grid" ? "max-w-[1800px]" : "max-w-6xl",
+        )}
+      >
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h1 className="font-display text-xl font-semibold tracking-tight">
             Shots
@@ -245,7 +259,11 @@ function ShotsScreen() {
             timezone={production?.timezone}
           />
         ) : (
-          <ShotsGrid shots={shots} productionId={productionId} />
+          <ShotsGrid
+            shots={shots}
+            productionId={productionId}
+            today={today}
+          />
         )}
       </div>
 
