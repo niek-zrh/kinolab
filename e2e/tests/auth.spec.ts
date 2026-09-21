@@ -104,7 +104,7 @@ test.describe.serial("auth", () => {
     await page.fill("#email", email);
     await page.fill("#password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();
-    await page.waitForURL(/localhost:3000\/$/, { timeout: 30_000 });
+    await page.waitForURL(url => url.pathname === "/", { timeout: 30_000 });
   });
 
   test("duplicate sign-up with a wrong password shows the friendly error", async ({

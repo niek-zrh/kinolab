@@ -303,6 +303,19 @@ export default defineSchema({
     .index("by_approver_status", ["approverId", "status"])
     .index("by_target", ["scope", "targetId"]),
 
+  referenceCards: defineTable({
+    productionId: v.id("productions"),
+    title: v.string(),
+    notes: v.string(),
+    category: v.union(v.literal("look"), v.literal("character"), v.literal("location"), v.literal("costume"), v.literal("lighting")),
+    assetId: v.optional(v.id("assets")),
+    sourceUrl: v.optional(v.string()),
+    colors: v.array(v.string()),
+    createdBy: v.id("users"),
+    updatedAt: v.number(),
+    archived: v.boolean(),
+  }).index("by_production_archived", ["productionId", "archived"]),
+
   comments: defineTable({
     productionId: v.id("productions"),
     targetType: v.union(
@@ -315,6 +328,7 @@ export default defineSchema({
     targetId: v.string(),
     authorId: v.id("users"),
     body: v.string(),
+    timeSeconds: v.optional(v.number()),
     mentions: v.array(v.id("users")),
     resolvedBy: v.optional(v.id("users")),
     resolvedAt: v.optional(v.number()),

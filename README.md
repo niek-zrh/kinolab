@@ -15,14 +15,16 @@ for the full illustrated guide. How to edit it: [docs/MANUAL.md](docs/MANUAL.md)
 Spec: `stravi-pilot-mega-prompt.md` · second-round brief: `docs/SPEC-v2.md` ·
 decisions log: [DECISIONS.md](DECISIONS.md) ·
 backend API contract: [docs/CONTRACTS.md](docs/CONTRACTS.md) · plan: [PLAN.md](PLAN.md).
-Current version: **1.2.0-pilot.1** — what changed is in
-§What changed in v1.2.0-pilot.1.
+Current version: **1.6.0** — [release notes and deployment gates](docs/RELEASE-1.6.md).
+This release adds a scene storyboard, shared reference boards, a character
+gallery, native video review and timestamped, resolvable feedback. Existing
+production tracking, permissions and approval workflows remain available.
 
 ---
 
 ## Quickstart (clone → seeded app in ~10 minutes)
 
-Prerequisites: Node 20+, pnpm 9+.
+Prerequisites: Node 22.18+ and pnpm 11.8 (the pinned package manager).
 
 ```bash
 pnpm install
@@ -41,6 +43,19 @@ CONVEX_AGENT_MODE=anonymous npx convex run seed:run
 # 4. Run backend + frontend together:
 pnpm dev            # convex dev + next dev → http://localhost:3000
 ```
+
+Optional, in a second terminal while the frontend is running:
+
+```bash
+CONVEX_AGENT_MODE=anonymous pnpm exec convex run demoArtwork:run '{"baseUrl":"http://localhost:3000"}'
+```
+
+This installs original, **AI-generated illustrative artwork** in the local
+SIGNAL LOST demo and adds three reference cards. It replaces only exact seed
+shot-placeholder filenames, preserves character placeholders and real uploads,
+and is idempotent. Sample versions reuse the artwork; they are not distinct
+takes. [Asset provenance and prompts](docs/CREATIVE-ASSETS.md). Both seed
+actions refuse remote deployments.
 
 Sign in with **email + password** (the dev fallback — Google sign-in activates
 once you finish the Google setup below). Sign-up with one of these emails
@@ -683,14 +698,24 @@ none of it has a safe default that guesses right.
    except a local dev backend (detected from `CONVEX_SITE_URL` pointing at
    `127.0.0.1` / `localhost` / `[::1]`). With the gate on, a new account is
    created only when the email has a pending invite, is on
-   `ADMIN_SIGNUP_ALLOWLIST`, or the backend has no users at all (first boot).
+   `ADMIN_SIGNUP_ALLOWLIST`. There is no first-visitor bootstrap exception.
    Existing users always sign in. **Never set `ALLOW_OPEN_SIGNUPS` on the
-   pilot** — the password provider does not verify email ownership, so open
-   registration means anyone with the URL can create an account.
+   pilot**.
 
-2. **Onboard the studio by invite.** Owner (an allowlisted email) signs up
-   first, then Team → invite each person with their role. They sign up with
-   that exact email and the membership attaches on first sign-in.
+   Since 1.6, **new password registration is disabled remotely by default**:
+   passwords do not verify ownership of an invited email. Configure
+   `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` before onboarding new users;
+   Google must return a verified email. Existing password credentials still
+   work with existing memberships. Verified Google sign-in can link only to
+   a single already-verified account with the same email; legacy unverified
+   accounts and duplicate emails require administrator migration. Unverified
+   existing accounts cannot claim new remote invites by default.
+   `ALLOW_PASSWORD_SIGNUPS=1` is an explicit,
+   insecure opt-in, not the recommended production configuration.
+
+2. **Onboard the studio by invite.** Owner (an allowlisted, verified Google
+   email) signs in first, then Team → invite each person with their role.
+   They use Google with that exact email; the membership attaches on sign-in.
 
 3. **Never seed the pilot backend.** `npx convex run seed:run` plants
    claimable pending invites — `niek.tenhove@gmail.com` (owner),
@@ -1136,14 +1161,24 @@ pilot):
 
 ```bash
 pnpm typecheck                       # tsc --noEmit
+pnpm test:unit                       # registration policy + elapsed-time formatting
+pnpm audit                          # production and development dependency advisories
 pnpm test:api                        # e2e/api/run.mjs — server-side suite: six-role
                                      # authz matrix, integrity, validation, shots-v2,
-                                     # elements (characters), exports (provenance)
+                                     # elements, provenance, references, timed feedback
 pnpm test:e2e                        # Playwright, e2e/tests/*.spec.ts (reuses :3000)
 pnpm exec playwright test e2e/tests/characters.spec.ts   # one spec
 node scripts/screenshot-themes.mjs   # both-theme walk of every route →
                                      # e2e/screenshots/{dark,light}/{route}.png
 ```
+
+`pnpm check` runs typecheck, unit tests, dependency audit and a production
+build. Stop a dev frontend before building in the same checkout. Then run
+`pnpm start` and the API/browser suites against that production build, with
+the isolated local backend still running. For a different local port, set
+`PLAYWRIGHT_BASE_URL=http://localhost:3005`; API tests read the backend URL
+from `.env.local` or `CONVEX_URL`. Both harnesses refuse non-loopback targets
+because they create data. GitHub Actions runs these checks on pushes and PRs.
 
 Every spec is serial and self-contained: it signs up its own throwaway
 owner, studio and production (`e2e/tests/helpers.ts`), so nothing depends on
@@ -1171,7 +1206,7 @@ QA_SIGNUP=1 SHOTS_DIR=/tmp/slate-shots node e2e/qa-aurora.mjs  # screenshot walk
 app/                  Next.js routes (App Router)
   (auth)/sign-in      Sign-in (password fallback + Google)
   (app)/              Shell: studio home, team, /new wizard, /p/[productionId]/*
-                      (board, shots, shots/[shotId], characters, characters/[elementId],
+                      (board, storyboard, references, shots, shots/[shotId], characters, characters/[elementId],
                       review, review/[shotId], files, decisions, reports, qc, settings)
 components/app        Kinolab components (slate-strip, shot-frame, status-pill, shell,
                       theme provider + appearance control, generation-details dialog…)

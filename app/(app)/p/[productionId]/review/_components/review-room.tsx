@@ -36,6 +36,7 @@ import { DecisionActions, PickDialog, RejectDialog } from "./decision-dialogs";
 import { Filmstrip } from "./filmstrip";
 import { RightRail } from "./right-rail";
 import { ZoomHud } from "./zoom-hud";
+import type { SeekRequest } from "./video-surface";
 import {
   firstErrorLine,
   roleCanDecide,
@@ -75,6 +76,8 @@ export function ReviewRoom({
   const [hintsOpen, setHintsOpen] = useState(false);
   const [clappedId, setClappedId] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const [playheads, setPlayheads] = useState<Record<string, number>>({});
+  const [seekRequest, setSeekRequest] = useState<SeekRequest | null>(null);
   const clapTimerRef = useRef<number | null>(null);
   const leaveTimerRef = useRef<number | null>(null);
 
@@ -160,7 +163,9 @@ export function ReviewRoom({
       return;
     }
     if (focused.status === "picked") {
-      toast(`v${focused.index} is picked — pick another version to supersede it`);
+      toast(
+        `v${focused.index} is picked — pick another version to supersede it`,
+      );
       return;
     }
     setRejectOpen(true);
@@ -179,9 +184,7 @@ export function ReviewRoom({
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => undefined);
     } else {
-      void document.documentElement
-        .requestFullscreen()
-        .catch(() => undefined);
+      void document.documentElement.requestFullscreen().catch(() => undefined);
     }
   };
 
@@ -256,7 +259,7 @@ export function ReviewRoom({
     <div className="dark">
       <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
         {/* Top bar */}
-        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-3">
+        <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-1">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -353,7 +356,7 @@ export function ReviewRoom({
         </header>
 
         {/* Center: compare canvas + right rail */}
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
             {loading ? (
               <div className="flex flex-1 items-center justify-center">
@@ -377,20 +380,27 @@ export function ReviewRoom({
                   const i = versions.findIndex((v) => v._id === versionId);
                   if (i >= 0) setFocusIndex(i);
                 }}
+                onTimeChange={(versionId, seconds) =>
+                  setPlayheads((p) => ({ ...p, [versionId]: seconds }))
+                }
+                seekRequest={seekRequest}
               />
             )}
             {/* Zoom readout + Fit, over the canvas (never over the filmstrip). */}
-            {!loading && count > 0 && (
-              <ZoomHud
-                transform={transform}
-                setTransform={setTransform}
-                originalUrl={focused?.asset?.fileUrl ?? null}
-              />
-            )}
+            {!loading &&
+              count > 0 &&
+              focused?.asset?.mimeType?.startsWith("image/") && (
+                <ZoomHud
+                  transform={transform}
+                  setTransform={setTransform}
+                  originalUrl={focused?.asset?.fileUrl ?? null}
+                />
+              )}
           </div>
 
           {railOpen && focused !== undefined && (
             <RightRail
+              key={focused._id}
               productionId={productionId}
               shotId={shotId}
               version={focused}
@@ -398,6 +408,19 @@ export function ReviewRoom({
               onShortlist={onShortlist}
               onReject={onReject}
               onPick={onPick}
+              timeSeconds={
+                focused.asset?.provider === "storage" &&
+                focused.asset.mimeType?.startsWith("video/")
+                  ? (playheads[focused._id] ?? 0)
+                  : undefined
+              }
+              onSeek={(seconds) =>
+                setSeekRequest({
+                  versionId: focused._id,
+                  seconds,
+                  sequence: Date.now(),
+                })
+              }
             />
           )}
         </div>
@@ -484,8 +507,8 @@ function RoomHints({
           synced across every pane.
         </p>
         <p className="text-xs text-muted-foreground">
-          Letter keys follow the physical key, so they work on a Russian
-          layout too. Every decision is also a button in the right rail.
+          Letter keys follow the physical key, so they work on a Russian layout
+          too. Every decision is also a button in the right rail.
         </p>
       </DialogContent>
     </Dialog>

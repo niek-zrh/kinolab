@@ -148,7 +148,8 @@ export const list = query({
       .withIndex("by_target", (q) =>
         q.eq("targetType", args.targetType).eq("targetId", args.targetId),
       )
-      .collect();
+      .order("desc")
+      .take(500);
     const resolved = await resolveCommentTarget(
       ctx,
       args.targetType,
@@ -180,6 +181,7 @@ export const add = mutation({
     body: v.string(),
     mentions: v.array(v.id("users")),
     hrefHint: v.optional(v.string()),
+    timeSeconds: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { userId, production } = await assertCanForProduction(
@@ -189,13 +191,37 @@ export const add = mutation({
     );
     const body = args.body.trim();
     if (!body) throw new ConvexError("Comment can't be empty");
+    if (body.length > 8000)
+      throw new ConvexError("Keep comments under 8,000 characters");
+    if (args.mentions.length > 50)
+      throw new ConvexError("Mention at most 50 people");
     const resolved = await resolveCommentTarget(
       ctx,
       args.targetType,
       args.targetId,
     );
-    if (resolved && resolved.productionId !== args.productionId) {
+    if (!resolved) throw new ConvexError("Comment target not found");
+    if (resolved.productionId !== args.productionId) {
       throw new ConvexError("Target does not belong to this production");
+    }
+    if (args.timeSeconds !== undefined) {
+      if (
+        args.targetType !== "version" ||
+        !Number.isFinite(args.timeSeconds) ||
+        args.timeSeconds < 0 ||
+        args.timeSeconds > 86400
+      ) {
+        throw new ConvexError(
+          "Timestamps must be between 0 and 86,400 seconds on a video version",
+        );
+      }
+      const versionId = ctx.db.normalizeId("versions", args.targetId);
+      const version = versionId ? await ctx.db.get(versionId) : null;
+      const asset = version?.primaryAssetId
+        ? await ctx.db.get(version.primaryAssetId)
+        : null;
+      if (!asset?.mimeType?.startsWith("video/"))
+        throw new ConvexError("Timestamps can only be added to video versions");
     }
 
     // Only studio members can be mentioned — silently drop everyone else
@@ -215,6 +241,7 @@ export const add = mutation({
       targetId: args.targetId,
       authorId: userId,
       body,
+      timeSeconds: args.timeSeconds,
       mentions,
     });
 
@@ -252,7 +279,7 @@ export const add = mutation({
 });
 
 export const resolve = mutation({
-  args: { commentId: v.id("comments") },
+  args: { commentId: v.id("comments"), resolved: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const comment = await ctx.db.get(args.commentId);
     if (!comment) throw new ConvexError("Comment not found");
@@ -265,18 +292,20 @@ export const resolve = mutation({
         "Only the author or an editor can resolve this comment",
       );
     }
+    const resolved = args.resolved !== false;
+    if ((comment.resolvedAt !== undefined) === resolved) return;
     await ctx.db.patch(comment._id, {
-      resolvedBy: userId,
-      resolvedAt: Date.now(),
+      resolvedBy: resolved ? userId : undefined,
+      resolvedAt: resolved ? Date.now() : undefined,
     });
     const name = await actorName(ctx, userId);
     await logActivity(ctx, {
       productionId: comment.productionId,
       actorId: userId,
-      type: "comment.resolved",
+      type: resolved ? "comment.resolved" : "comment.reopened",
       targetType: comment.targetType,
       targetId: comment.targetId,
-      summary: `${name} resolved a comment — "${snippet(comment.body, 80)}"`,
+      summary: `${name} ${resolved ? "resolved" : "reopened"} a comment — "${snippet(comment.body, 80)}"`,
     });
   },
 });

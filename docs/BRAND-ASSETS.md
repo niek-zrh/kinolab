@@ -1,20 +1,21 @@
 # Dropping in generated images
 
-Everything visual in Kinolab is drawn in code today — the backdrop, the
-posters, the grain, the leader. That is deliberate: code stays sharp at any
-size, follows light and dark, weighs nothing and cannot go stale.
+Kinolab combines code-native interface graphics with original raster artwork.
+Version 1.6 includes a generated soundstage sign-in image and optional local
+demo film stills. See [asset provenance and exact prompts](CREATIVE-ASSETS.md).
+The grain, film leader and empty frames remain code-native and follow both themes.
 
 But some things a model does better than a gradient. This is where those go.
 Generate them wherever you generate the film — Midjourney, Flux, Firefly,
-whatever — and drop the file in. Nothing else needs changing: each slot falls
-back to its generated version when the file is absent, so a half-filled
-`public/brand/` is a valid state.
+whatever — and wire the file into the relevant component. `CinemaBackdrop`
+uses its code treatment when no `image` prop is supplied; a missing file with
+an explicit `image` prop is not an automatic fallback.
 
 ## The slots
 
 | File | Where it shows | Size | Falls back to |
 |---|---|---|---|
-| `public/brand/sign-in.jpg` | Behind the sign-in and create-studio forms | 2560×1440, JPG, < 400KB | The code backdrop (blooms + anamorphic streak) |
+| `public/brand/sign-in.jpg` | Behind the sign-in form (installed in 1.6) | Wide JPG | The code backdrop when no image prop is passed |
 | `public/brand/empty-shots.jpg` | The Shots empty state | 1600×900 | An icon in a badge |
 | `public/brand/empty-review.jpg` | The Review queue empty state | 1600×900 | An icon in a badge |
 

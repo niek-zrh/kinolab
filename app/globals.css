@@ -8,6 +8,27 @@
    menus, toasts — follow the room without per-dialog class hacks. */
 @custom-variant dark (&:is(.dark *));
 
+@layer components {
+  .native-select {
+    @apply h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40;
+  }
+  .creative-banner {
+    background: linear-gradient(110deg, color-mix(in oklab, var(--tape) 7%, var(--card)), var(--card) 55%);
+  }
+}
+
+@media print {
+  .no-print, [data-sonner-toaster], nextjs-portal { display: none !important; }
+  html, body { background: white !important; color: black !important; }
+  .storyboard-page { max-width: none !important; --muted-foreground: #454545; --foreground: #111; --card: #fff; --border: #ccc; }
+  .storyboard-page .creative-banner { background: white; }
+  .storyboard-page .storyboard-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .storyboard-grid > a { break-inside: avoid; background: white !important; color: black; border-color: #aaa; }
+  .storyboard-scene { break-inside: auto; margin-bottom: 24px; }
+  .storyboard-scene h2 { break-after: avoid; }
+  .storyboard-page img { print-color-adjust: exact; }
+}
+
 @theme inline {
     --font-sans: var(--font-archivo);
     --font-display: var(--font-archivo);

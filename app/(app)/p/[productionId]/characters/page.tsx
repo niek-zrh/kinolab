@@ -4,8 +4,9 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useParams } from "next/navigation";
-import { useState } from "react";
-import { ClipboardList, Plus, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ClipboardList, LayoutGrid, Plus, Rows3, Users } from "lucide-react";
+import { CharactersGallery } from "./_components/characters-gallery";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/app/empty-state";
@@ -41,6 +42,14 @@ export default function CharactersPage() {
   const canEdit = isContentEditor(role);
   const [newOpen, setNewOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const [view, setView] = useState<"gallery" | "table">("gallery");
+  useEffect(() => {
+    try { if (localStorage.getItem("kinolab.charactersView") === "table") setView("table"); } catch { /* optional preference */ }
+  }, []);
+  const changeView = (next: "gallery" | "table") => {
+    setView(next);
+    try { localStorage.setItem("kinolab.charactersView", next); } catch { /* still usable without storage */ }
+  };
   useHotkeys(
     {
       n: () => {
@@ -53,7 +62,7 @@ export default function CharactersPage() {
   const capped = rows !== undefined && rows.length >= MAX_LIST_ELEMENTS;
 
   return (
-    <PageShell>
+    <PageShell width="sheet">
         <PageHeader
           title="Characters"
           favoriteLabel="Characters"
@@ -68,9 +77,14 @@ export default function CharactersPage() {
               </>
             ) : undefined
           }
-          description="One row per character; Concept and Animation each collect options, shortlist and pick like a shot."
+          description="Meet the cast. Develop concepts, compare animation, and keep the creative direction with each character."
           actions={
-            canEdit ? (
+            <>
+            <div className="flex rounded-lg border p-0.5" role="group" aria-label="Character view">
+              <Button size="icon-sm" variant={view === "gallery" ? "secondary" : "ghost"} aria-label="Character gallery" aria-pressed={view === "gallery"} onClick={() => changeView("gallery")}><LayoutGrid /></Button>
+              <Button size="icon-sm" variant={view === "table" ? "secondary" : "ghost"} aria-label="Character table" aria-pressed={view === "table"} onClick={() => changeView("table")}><Rows3 /></Button>
+            </div>
+            {canEdit && (
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -87,7 +101,8 @@ export default function CharactersPage() {
                 <Plus /> New character
               </Button>
             </div>
-            ) : undefined
+            )}
+            </>
           }
         />
 
@@ -109,11 +124,11 @@ export default function CharactersPage() {
           </EmptyState>
         ) : (
           <>
-            <CharactersTable
+            {view === "gallery" ? <CharactersGallery rows={rows} productionId={productionId} canEdit={canEdit} /> : <CharactersTable
               rows={rows}
               productionId={productionId}
               canEdit={canEdit}
-            />
+            />}
             {capped && (
               <p className="mt-2 text-xs text-muted-foreground">
                 Showing the first {MAX_LIST_ELEMENTS} characters.

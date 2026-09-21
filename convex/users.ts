@@ -1,12 +1,14 @@
 import { query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { passwordSignupAllowed } from "./lib/authPolicy";
 
 /** Which sign-in methods are configured on this deployment. */
 export const authProviders = query({
   args: {},
   handler: async () => ({
-    google: Boolean(process.env.AUTH_GOOGLE_ID),
+    google: Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET),
     password: true,
+    passwordSignup: passwordSignupAllowed(process.env),
   }),
 });
 

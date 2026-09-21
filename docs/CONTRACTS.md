@@ -41,7 +41,8 @@ Shared rules for every module (non-negotiable):
    `version.shortlisted`, `version.rejected`, `version.unrejected`,
    `version.picked`, `version.moved` (SHOULD, with `versions.moveToShot`),
    `element.created`, `element.updated`, `element.removed`, `gate.requested`,
-   `gate.approved`, `gate.rejected`, `comment.added`, `comment.resolved`,
+   `gate.approved`, `gate.rejected`, `comment.added`, `comment.resolved`, `comment.reopened`,
+   `reference.created`, `reference.updated`, `reference.archived`, `reference.restored`,
    `asset.added`, `export.generated`, `report.published`, `qc.run_started`,
    `qc.run_passed`, `qc.run_failed`, `drive.hub_created`, `drive.synced`,
    `drive.approved_filed`, `drive.hub_owner_mismatch`.
@@ -228,11 +229,17 @@ Client side — `lib/csv.ts` (shared with the ledger export and the New shots �
 - `ledger` (query): `{ productionId, scope? }` → decided + pending approvals
   newest first, enriched `{ requestedByUser: UserRef, approverUser: UserRef, targetLabel, href }`.
 
+## references.ts (1.6)
+
+- `list` (query): `{ productionId, archived?: boolean }` → `{ cards, capped }`. Membership required. Newest 300 cards in the selected archive state, with an enriched image `asset` (or null); `capped` indicates omitted rows.
+- `save` (mutation): `{ productionId, cardId?, title, notes, category, assetId?, sourceUrl?, colors }` → card ID. `category` is `look | character | location | costume | lighting`. Permission `version.create`; updates also require creator ownership or `content.edit`. The image must belong to this production. Title 1–120 characters, notes at most 4,000, up to six `#RRGGBB` colors, source URL at most 2,000 characters and HTTP(S) without credentials. Activity `reference.created` / `reference.updated`.
+- `setArchived` (mutation): `{ cardId, archived: boolean }`. Same creator/editor rule and `version.create`. Idempotent; archives/restores the card without deleting source media. Activity `reference.archived` / `reference.restored`.
+
 ## comments.ts
 
-- `list` (query): `{ targetType, targetId }` → comments oldest first, enriched `{ author: UserRef, mentionUsers: UserRef[] }`.
-- `add` (mutation): `{ productionId, targetType, targetId, body, mentions: Id<"users">[] }`. Perm `comment.create`. Notify mentions (`mention`, href to target: shot → `/p/{pid}/shots/{targetId}`, version → its shot's page — for version targets the client passes shotId via `hrefHint?: string` arg; store nothing extra). Activity `comment.added` (body first 80 chars in summary).
-- `resolve` (mutation): `{ commentId }`. Author or `content.edit`.
+- `list` (query): `{ targetType, targetId }` → newest 500 comments, ordered oldest first within that window, enriched `{ author: UserRef, mentionUsers: UserRef[] }`. Membership required for the target production.
+- `add` (mutation): `{ productionId, targetType, targetId, body, mentions: Id<"users">[], hrefHint?, timeSeconds? }`. Perm `comment.create`. Target must exist in this production. Body 1–8,000 characters; at most 50 mentions (only current studio members retained). `timeSeconds` is optional elapsed playback time (finite 0–86,400), only for a version with a video primary asset; it is not SMPTE timecode. Notify mentions; `hrefHint` is accepted only inside the current production path. Activity `comment.added`.
+- `resolve` (mutation): `{ commentId, resolved?: boolean }`. Author or `content.edit`. Defaults to true for compatibility; false reopens. Idempotent and preserves body/timestamp. Activity `comment.resolved` / `comment.reopened`.
 
 ## activity.ts (NEW top-level module `convex/activity.ts` — the helper stays at `convex/lib/activity.ts`)
 

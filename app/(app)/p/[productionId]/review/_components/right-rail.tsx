@@ -5,7 +5,16 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Copy, Pencil, SendHorizonal } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Pencil,
+  SendHorizonal,
+  Timer,
+  Undo2,
+  X,
+} from "lucide-react";
+import { formatReviewTime } from "@/lib/timecode";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,6 +46,8 @@ export function RightRail({
   onShortlist,
   onReject,
   onPick,
+  timeSeconds,
+  onSeek,
 }: {
   productionId: Id<"productions">;
   shotId: Id<"shots">;
@@ -46,6 +57,8 @@ export function RightRail({
   onShortlist: () => void;
   onReject: () => void;
   onPick: () => void;
+  timeSeconds?: number;
+  onSeek: (seconds: number) => void;
 }) {
   const meta = version.promptMeta;
   const decided = version.decidedBy !== undefined;
@@ -61,7 +74,7 @@ export function RightRail({
   return (
     <aside
       aria-label="Version details"
-      className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-border bg-background"
+      className="flex max-h-[42dvh] w-full shrink-0 flex-col overflow-hidden border-t border-border bg-background md:max-h-none md:w-80 md:border-l md:border-t-0"
     >
       <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Focused version header */}
@@ -234,6 +247,8 @@ export function RightRail({
           productionId={productionId}
           shotId={shotId}
           versionId={version._id}
+          timeSeconds={timeSeconds}
+          onSeek={onSeek}
         />
       </div>
     </aside>
@@ -255,18 +270,35 @@ function CommentThread({
   productionId,
   shotId,
   versionId,
+  timeSeconds,
+  onSeek,
 }: {
   productionId: Id<"productions">;
   shotId: Id<"shots">;
   versionId: Id<"versions">;
+  timeSeconds?: number;
+  onSeek: (seconds: number) => void;
 }) {
   const comments = useQuery(api.comments.list, {
     targetType: "version",
     targetId: versionId,
   });
   const addComment = useMutation(api.comments.add);
+  const resolveComment = useMutation(api.comments.resolve);
+  const { viewer, role } = useStudio();
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [pinnedTime, setPinnedTime] = useState<number | undefined>();
+  const [showResolved, setShowResolved] = useState(false);
+  const canEdit = [
+    "owner",
+    "producer",
+    "creative_director",
+    "supervisor",
+  ].includes(role ?? "");
+  const visibleComments = comments?.filter(
+    (c) => showResolved || c.resolvedAt === undefined,
+  );
 
   const send = async () => {
     const text = body.trim();
@@ -280,8 +312,10 @@ function CommentThread({
         body: text,
         mentions: [],
         hrefHint: `/p/${productionId}/review/${shotId}`,
+        timeSeconds: pinnedTime,
       });
       setBody("");
+      setPinnedTime(undefined);
     } catch (e) {
       toast.error(firstErrorLine(e));
     } finally {
@@ -291,22 +325,40 @@ function CommentThread({
 
   return (
     <div className="px-4 py-3">
-      <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Comments
-      </h3>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Comments
+        </h3>
+        <button
+          type="button"
+          onClick={() => setShowResolved(!showResolved)}
+          aria-pressed={showResolved}
+          className="text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          {showResolved ? "Hide resolved" : "Show resolved"}
+        </button>
+      </div>
       {comments === undefined ? (
         <div className="space-y-2">
           <Skeleton className="h-10" />
           <Skeleton className="h-10" />
         </div>
-      ) : comments.length === 0 ? (
+      ) : visibleComments?.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No comments on this version yet.
+          {comments.length
+            ? "All feedback resolved."
+            : "No comments on this version yet."}
         </p>
       ) : (
         <ul className="space-y-3">
-          {comments.map((c) => (
-            <li key={c._id} className="flex gap-2">
+          {visibleComments?.map((c) => (
+            <li
+              key={c._id}
+              className={cn(
+                "flex gap-2",
+                c.resolvedAt !== undefined && "opacity-65",
+              )}
+            >
               <UserAvatar
                 name={c.author.name}
                 image={c.author.image}
@@ -324,14 +376,81 @@ function CommentThread({
                 <p className="mt-0.5 text-sm whitespace-pre-wrap break-words">
                   {c.body}
                 </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  {c.timeSeconds !== undefined && (
+                    <button
+                      type="button"
+                      aria-label={`Seek to ${formatReviewTime(c.timeSeconds)}`}
+                      onClick={() => onSeek(c.timeSeconds!)}
+                      className="inline-flex items-center gap-1 rounded bg-tape/10 px-1.5 py-0.5 font-mono text-[10px] text-tape"
+                    >
+                      <Timer className="size-3" />
+                      {formatReviewTime(c.timeSeconds)}
+                    </button>
+                  )}
+                  {c.resolvedAt !== undefined && (
+                    <span className="text-[10px]">Resolved</span>
+                  )}
+                  {(canEdit || c.authorId === viewer?._id) && (
+                    <button
+                      type="button"
+                      aria-label={`${c.resolvedAt !== undefined ? "Reopen" : "Resolve"} comment: ${c.body.slice(0, 40)}`}
+                      onClick={() => {
+                        void resolveComment({
+                          commentId: c._id,
+                          resolved: c.resolvedAt === undefined,
+                        }).catch((e) => toast.error(firstErrorLine(e)));
+                      }}
+                      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                      {c.resolvedAt !== undefined ? (
+                        <Undo2 className="size-3" />
+                      ) : (
+                        <Check className="size-3" />
+                      )}
+                      {c.resolvedAt !== undefined ? "Reopen" : "Resolve"}
+                    </button>
+                  )}
+                </div>
               </div>
             </li>
           ))}
         </ul>
       )}
 
+      {comments && comments.length >= 500 && (
+        <p className="mt-2 text-[10px] text-muted-foreground">
+          Showing the newest 500 comments.
+        </p>
+      )}
+      {timeSeconds !== undefined && (
+        <div className="mt-3 flex flex-wrap items-center gap-1">
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => setPinnedTime(timeSeconds)}
+          >
+            <Timer />
+            {pinnedTime === undefined
+              ? `Attach ${formatReviewTime(timeSeconds)}`
+              : formatReviewTime(pinnedTime)}
+          </Button>
+          {pinnedTime !== undefined && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Remove timestamp"
+              onClick={() => setPinnedTime(undefined)}
+            >
+              <X />
+            </Button>
+          )}
+        </div>
+      )}
       <div className="mt-3 flex items-end gap-2">
         <Textarea
+          aria-label="Review comment"
+          maxLength={8000}
           value={body}
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={(e) => {

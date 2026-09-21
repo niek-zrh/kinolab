@@ -69,7 +69,7 @@ export function OverviewReel({
     return (
       <Link
         href={`/p/${productionId}/shots`}
-        className="mb-4 flex items-center justify-center rounded-xl border border-dashed py-10 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="creative-banner mb-6 flex min-h-48 items-center justify-center rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         No frames yet — options appear here as the production generates them.
       </Link>
@@ -77,20 +77,20 @@ export function OverviewReel({
   }
 
   return (
-    <section aria-label="Latest frames" className="mb-4">
+    <section aria-label="Latest frames" className="mb-6">
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <h2 className="font-display text-lg font-medium">
           The film so far
         </h2>
         <Link
-          href={`/p/${productionId}/shots`}
+          href={`/p/${productionId}/storyboard`}
           className="group flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          All shots
+          Open storyboard
           <ArrowUpRight className="size-3 transition-transform group-hover:-translate-y-0.5" />
         </Link>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {reel.map((shot) => (
           <Link
             key={shot._id}
@@ -109,6 +109,10 @@ export function OverviewReel({
               framed={false}
               className="transition-transform duration-300 group-hover:scale-[1.03]"
             />
+            <div className="flex items-start justify-between gap-3 bg-card px-3 py-2.5">
+              <div className="min-w-0"><p className="truncate text-sm font-medium">{shot.title ?? shot.code}</p><p className="mt-1 font-mono text-[10px] text-muted-foreground">{shot.code}</p></div>
+              <span className="shrink-0 text-[10px] text-muted-foreground">{SHOT_STATUS_BY_KEY[shot.status].label}</span>
+            </div>
           </Link>
         ))}
       </div>

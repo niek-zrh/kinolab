@@ -11,7 +11,7 @@ export default async function ProductionLayout({
 }) {
   const { productionId } = await params;
   return (
-    <div className="flex flex-1">
+    <div className="flex flex-1 flex-col md:flex-row">
       <ProductionRail productionId={productionId as Id<"productions">} />
       <div className="min-w-0 flex-1">{children}</div>
     </div>

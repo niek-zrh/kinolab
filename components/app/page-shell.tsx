@@ -41,7 +41,7 @@ export function PageShell({
   className?: string;
 }) {
   return (
-    <main className="min-w-0 flex-1 px-8 py-6">
+    <main id="main-content" className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
       <div className={cn("w-full", WIDTHS[width], className)}>{children}</div>
     </main>
   );
@@ -76,7 +76,7 @@ export function FavoriteStar({ label }: { label: string }) {
             : "Pin to favourites"
       }
       className={cn(
-        "rounded-md p-1 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+        "no-print rounded-md p-1 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
         starred
           ? "text-tape hover:text-tape/80"
           : "text-muted-foreground/50 hover:text-foreground",
@@ -115,7 +115,7 @@ export function PageHeader({
               heading's accessible name, so a count is part of what a screen
               reader (and a test) announces — "Characters · 3", not a bare
               "Characters" with a number floating beside it. */}
-          <h1 className="font-display text-xl font-semibold tracking-tight">
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
             {title}
             {meta !== undefined && (
               <>
@@ -137,7 +137,7 @@ export function PageHeader({
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="no-print flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }

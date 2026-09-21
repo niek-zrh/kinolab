@@ -26,6 +26,16 @@ type Section = {
 
 const SECTIONS: Section[] = [
   {
+    id: "visual-workspace",
+    title: "Build the visual language",
+    lede: "Storyboard, reference board, and character gallery keep the artwork close to the work.",
+    body: [
+      { text: "Storyboard groups real shot frames in scene order. Search a shot, filter a scene, and open a frame to work on its options. Editors can add scene direction with the pencil. Print board creates a contact sheet you can save as PDF." },
+      { text: "Reference board collects production artwork, creative notes, up to six palette colors, and a source or credit URL. Artists can maintain their own cards; editors can maintain the whole board. Archive cards you no longer need, and restore them from Archived." },
+      { text: "Characters opens as a gallery of the cast. Concept and Animation link directly to their working phases. Switch to the table for inline prompt editing and final-file links; your choice is remembered on this device." },
+    ],
+  },
+  {
     id: "start",
     title: "Signing in",
     lede: "Kinolab is invite-only. Use the address your producer invited.",
@@ -101,6 +111,9 @@ const SECTIONS: Section[] = [
       },
       {
         text: "S shortlists, X rejects with a reason, P picks. A pick is the decision: one version per shot, recorded with who picked it and why, and copied into the Drive Approved/ folder under its canonical name. Picking another version later supersedes the first, and both stay on the record.",
+      },
+      {
+        text: "Uploaded browser-compatible videos now play directly in the room. Pause the clip and attach its current timestamp to a comment. The timestamp is elapsed time in milliseconds, not SMPTE frame timecode. Click it later to seek to that moment. Resolve finished notes or show resolved notes to reopen them. Drive links still open in Drive; upload an H.264 MP4 review copy for in-app playback.",
       },
     ],
   },

@@ -241,7 +241,7 @@ test.describe.serial("permissions", () => {
     await gotoSignedIn(artistPage, artistEmail, base);
     const rail = artistPage.locator("aside");
     await expect(rail.getByRole("link", { name: "Shots" })).toBeVisible();
-    await expect(rail.getByRole("link", { name: "Board" })).toBeVisible();
+    await expect(rail.getByRole("link", { name: "Board", exact: true })).toBeVisible();
     await expect(rail.getByRole("link", { name: "Settings" })).toBeVisible();
   });
 

@@ -9,7 +9,14 @@
  * Requires the dev backend to be running (`pnpm dev`).
  */
 
-export const CONVEX_URL = process.env.CONVEX_URL ?? "http://localhost:3210";
+import { existsSync, readFileSync } from "node:fs";
+
+const localEnv = existsSync(".env.local") ? readFileSync(".env.local", "utf8") : "";
+export const CONVEX_URL = process.env.CONVEX_URL ??
+  localEnv.match(/^NEXT_PUBLIC_CONVEX_URL=(.+)$/m)?.[1]?.trim() ?? "http://localhost:3210";
+if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(CONVEX_URL).hostname)) {
+  throw new Error("The regression suite creates test data and must target a local backend.");
+}
 export const PASSWORD = "kinolab-api-test-password-1";
 
 /* ------------------------------- transport ------------------------------- */

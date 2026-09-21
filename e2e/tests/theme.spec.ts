@@ -342,12 +342,15 @@ test("T7 both-theme screenshots land in e2e/screenshots/{theme}/", async () => {
       ["overview", base],
       ["board", `${base}/board`],
       ["shots", `${base}/shots`],
+      ["storyboard", `${base}/storyboard`],
+      ["references", `${base}/references`],
+      ["characters", `${base}/characters`],
       ["review", `${base}/review`],
       ["settings", `${base}/settings`],
     ];
     for (const [name, url] of routes) {
       await gotoLoaded(p, url);
-      await p.waitForLoadState("networkidle").catch(() => undefined);
+      await p.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => undefined);
       await p.waitForTimeout(400);
       await p.screenshot({ path: path.join(dir, `${name}.png`) });
     }

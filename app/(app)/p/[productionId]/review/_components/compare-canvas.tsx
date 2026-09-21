@@ -5,6 +5,7 @@ import { ExternalLink, Film } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { copy } from "@/lib/copy";
 import { cn } from "@/lib/utils";
+import { VideoSurface, type SeekRequest } from "./video-surface";
 import {
   isImageVersion,
   VERSION_DOT,
@@ -54,6 +55,8 @@ export function CompareCanvas({
   transform,
   setTransform,
   onFocusVersion,
+  onTimeChange,
+  seekRequest,
 }: {
   panes: VersionCard[];
   focusedId: string | null;
@@ -61,6 +64,8 @@ export function CompareCanvas({
   transform: CanvasTransform;
   setTransform: Dispatch<SetStateAction<CanvasTransform>>;
   onFocusVersion: (versionId: string) => void;
+  onTimeChange: (versionId: string, seconds: number) => void;
+  seekRequest: SeekRequest | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -70,6 +75,8 @@ export function CompareCanvas({
     const el = containerRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      if ((e.target as HTMLElement | null)?.closest("[data-video-pane]"))
+        return;
       e.preventDefault();
       const paneEl =
         (e.target as HTMLElement | null)?.closest("[data-pane-canvas]") ?? el;
@@ -114,6 +121,8 @@ export function CompareCanvas({
           transform={transform}
           setTransform={setTransform}
           onFocus={() => onFocusVersion(version._id)}
+          onTimeChange={onTimeChange}
+          seekRequest={seekRequest}
         />
       ))}
     </div>
@@ -127,6 +136,8 @@ function Pane({
   transform,
   setTransform,
   onFocus,
+  onTimeChange,
+  seekRequest,
 }: {
   version: VersionCard;
   focused: boolean;
@@ -134,6 +145,8 @@ function Pane({
   transform: CanvasTransform;
   setTransform: Dispatch<SetStateAction<CanvasTransform>>;
   onFocus: () => void;
+  onTimeChange: (versionId: string, seconds: number) => void;
+  seekRequest: SeekRequest | null;
 }) {
   const isImage = isImageVersion(version);
   return (
@@ -164,7 +177,17 @@ function Pane({
         )}
       </div>
 
-      {isImage && version.asset?.thumbUrl ? (
+      {version.asset?.mimeType?.startsWith("video/") ? (
+        <div data-video-pane className="flex min-h-0 flex-1 flex-col">
+          <VideoSurface
+            version={version}
+            focused={focused}
+            onFocus={onFocus}
+            onTimeChange={onTimeChange}
+            seekRequest={seekRequest}
+          />
+        </div>
+      ) : isImage && version.asset?.thumbUrl ? (
         <ImageSurface
           src={version.asset.thumbUrl}
           alt={`v${version.index}`}
@@ -303,12 +326,12 @@ function MediaSurface({
           size="lg"
           className="relative"
           onClick={(e) => e.stopPropagation()}
-          render={
-            <a href={openUrl} target="_blank" rel="noreferrer" />
-          }
+          render={<a href={openUrl} target="_blank" rel="noreferrer" />}
         >
           <ExternalLink className="size-4" />
-          {asset?.provider === "gdrive" ? copy.actions.openInDrive : "Open file"}
+          {asset?.provider === "gdrive"
+            ? copy.actions.openInDrive
+            : "Open file"}
         </Button>
       )}
     </div>

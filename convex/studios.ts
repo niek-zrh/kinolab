@@ -4,6 +4,7 @@ import type { MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { role } from "./schema";
+import { canClaimEmailInvite } from "./lib/authPolicy";
 import {
   assertCan,
   assertMember,
@@ -32,6 +33,7 @@ export async function claimInvitesForUser(
   const user = await ctx.db.get(userId);
   const email = user?.email?.toLowerCase();
   if (!email) return;
+  if (!canClaimEmailInvite(process.env, user?.emailVerificationTime)) return;
   const invites = await ctx.db
     .query("memberships")
     .withIndex("by_invited_email", (q) => q.eq("invitedEmail", email))

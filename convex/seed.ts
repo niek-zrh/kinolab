@@ -12,6 +12,7 @@ import { role as roleValidator } from "./schema";
 import { insertElementWithSlots } from "./elements";
 import { slotShotCode } from "./lib/domain";
 import type { ElementSlot } from "./lib/domain";
+import { isLocalDeployment } from "./lib/authPolicy";
 
 /**
  * Idempotent demo seed (spec §12): studio Aurora North, production SIGNAL
@@ -234,6 +235,9 @@ export const alreadySeeded = internalQuery({
 export const run = internalAction({
   args: {},
   handler: async (ctx): Promise<string> => {
+    if (!isLocalDeployment(process.env)) {
+      throw new Error("Demo seeding is only allowed on a local backend; it creates claimable demo accounts.");
+    }
     if (await ctx.runQuery(internal.seed.alreadySeeded, {})) {
       return "Already seeded — studio 'Aurora North' exists. Delete it (or reset the local deployment) to reseed.";
     }

@@ -60,6 +60,7 @@ ENV NODE_ENV=production \
 RUN addgroup -S kinolab && adduser -S kinolab -G kinolab
 COPY --from=build --chown=kinolab:kinolab /app/.next/standalone ./
 COPY --from=build --chown=kinolab:kinolab /app/.next/static ./.next/static
+COPY --from=build --chown=kinolab:kinolab /app/public ./public
 USER kinolab
 EXPOSE 8090
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

@@ -178,10 +178,12 @@ async function openPage(path: string, ready: () => Locator) {
   }
 }
 
-const openList = () =>
-  openPage(`${base}/characters`, () =>
+const openList = async () => {
+  await openPage(`${base}/characters`, () =>
     page.getByRole("heading", { name: /^Characters/ }),
   );
+  await page.getByRole("button", { name: "Character table", exact: true }).click();
+};
 const openCharacter = () =>
   openPage(characterPath, () => page.getByLabel("Character name"));
 
@@ -250,6 +252,7 @@ test("C1 rail shows Characters; pasting names creates rows; Shots and Board stay
   await expect(
     page.getByRole("heading", { name: "Characters · 3" }),
   ).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Character table", exact: true }).click();
   const rows = page.locator("tbody tr");
   await expect(rows).toHaveCount(3);
   for (const [i, [name, code]] of [

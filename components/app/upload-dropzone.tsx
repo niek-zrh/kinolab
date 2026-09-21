@@ -5,13 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
-import {
-  Check,
-  Loader2,
-  UploadCloud,
-  Wand2,
-  X,
-} from "lucide-react";
+import { Check, Loader2, UploadCloud, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,7 +18,8 @@ import {
 import { cn } from "@/lib/utils";
 
 const MAX_BYTES = 20 * 1024 * 1024; // 20MB — bigger files go via Drive
-const TOO_BIG = "Add big files in Drive — they'll appear here on next sync";
+const TOO_BIG =
+  "Upload files over 20 MB to Drive, then use Attach from Drive to bring them into Kinolab.";
 
 /** Convex errors can be multiline — surface only the human line. */
 function firstErrorLine(message: string): string {
@@ -37,7 +32,7 @@ function firstErrorLine(message: string): string {
 // screens; the Review Room compare canvas still loads the full file.
 const THUMB_MAX_EDGE = 640;
 const THUMB_QUALITY = 0.82; // high enough to judge a still, ~1% of the original
-/** Only rasters every browser can decode — SVG, video and PDF get no thumb. */
+/** Raster decoder allowlist; video uses its own best-effort poster extraction. */
 const THUMBABLE_TYPES = new Set([
   "image/png",
   "image/jpeg",
@@ -69,6 +64,7 @@ function encodeCanvas(
  * Best-effort by design: null means "upload exactly as before".
  */
 async function makeThumbnail(file: File): Promise<Blob | null> {
+  if (file.type.startsWith("video/")) return makeVideoThumbnail(file);
   if (!THUMBABLE_TYPES.has(file.type)) return null;
   if (typeof createImageBitmap !== "function") return null;
   let bitmap: ImageBitmap | undefined;
@@ -100,6 +96,66 @@ async function makeThumbnail(file: File): Promise<Blob | null> {
   }
 }
 
+/** Extract a real poster from browser-decodable video; unsupported codecs still upload. */
+async function makeVideoThumbnail(file: File): Promise<Blob | null> {
+  const url = URL.createObjectURL(file);
+  const video = document.createElement("video");
+  video.preload = "auto";
+  video.muted = true;
+  video.playsInline = true;
+  try {
+    return await new Promise<Blob | null>((resolve) => {
+      let finished = false;
+      const finish = (blob: Blob | null) => {
+        if (finished) return;
+        finished = true;
+        window.clearTimeout(timer);
+        video.onloadeddata = null;
+        video.onseeked = null;
+        video.onerror = null;
+        resolve(blob);
+      };
+      const timer = window.setTimeout(() => finish(null), 8000);
+      const capture = async () => {
+        try {
+          if (!video.videoWidth || !video.videoHeight) return finish(null);
+          const scale = Math.min(
+            1,
+            THUMB_MAX_EDGE / Math.max(video.videoWidth, video.videoHeight),
+          );
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+          canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return finish(null);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          finish(
+            (await encodeCanvas(canvas, "image/webp")) ??
+              (await encodeCanvas(canvas, "image/jpeg")),
+          );
+        } catch {
+          finish(null);
+        }
+      };
+      video.onerror = () => finish(null);
+      video.onloadeddata = () => {
+        if (Number.isFinite(video.duration) && video.duration > 0.2) {
+          video.onseeked = () => {
+            void capture();
+          };
+          video.currentTime = Math.min(0.5, video.duration / 2);
+        } else void capture();
+      };
+      video.src = url;
+    });
+  } finally {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    URL.revokeObjectURL(url);
+  }
+}
+
 type UploadState = "uploading" | "done" | "error";
 type UploadItem = { key: string; name: string; state: UploadState };
 
@@ -110,7 +166,12 @@ type PromptMetaDraft = {
   seed: string;
 };
 
-const EMPTY_META: PromptMetaDraft = { tool: "", model: "", prompt: "", seed: "" };
+const EMPTY_META: PromptMetaDraft = {
+  tool: "",
+  model: "",
+  prompt: "",
+  seed: "",
+};
 
 /**
  * Card-sized uploader for shot options (spec F6). Accepts drag-drop, paste
@@ -157,7 +218,10 @@ export function UploadDropzone({
         continue;
       }
       const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      setItems((prev) => [...prev, { key, name: file.name, state: "uploading" }]);
+      setItems((prev) => [
+        ...prev,
+        { key, name: file.name, state: "uploading" },
+      ]);
       try {
         const url = await generateUploadUrl({ productionId });
         const res = await fetch(url, {
@@ -259,7 +323,8 @@ export function UploadDropzone({
         onDrop={(e) => {
           e.preventDefault();
           setDragActive(false);
-          if (e.dataTransfer.files.length > 0) void uploadFiles(e.dataTransfer.files);
+          if (e.dataTransfer.files.length > 0)
+            void uploadFiles(e.dataTransfer.files);
         }}
         className={cn(
           "flex min-h-44 flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -336,12 +401,11 @@ export function UploadDropzone({
         </PopoverTrigger>
         <PopoverContent align="start" className="w-80">
           <p className="text-xs text-muted-foreground">
-            Tool, model, prompt and seed — so anyone can regenerate this
-            option or show how it was made.
+            Tool, model, prompt and seed — so anyone can regenerate this option
+            or show how it was made.
           </p>
           <p className="text-xs text-muted-foreground">
-            Applied to the next uploads. You can edit them later on each
-            option.
+            Applied to the next uploads. You can edit them later on each option.
           </p>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">

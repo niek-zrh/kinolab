@@ -54,6 +54,7 @@ function failureMessage(
   err: unknown,
   flow: "signIn" | "signUp",
   hadAuthToken: boolean,
+  canRegisterPassword: boolean,
 ): string {
   const message = err instanceof Error ? err.message : "";
   // App-authored ConvexError messages (e.g. invite-only sign-ups) beat the
@@ -68,7 +69,6 @@ function failureMessage(
   if (!hadAuthToken && storedAuthToken() !== null) {
     return "Signed in — but the app didn't open. Reload this page to continue.";
   }
-  // Never reached the backend: the fetch rejected, a proxy answered with
   // Never reached the backend: the fetch rejected, or a proxy answered with
   // something that isn't JSON.
   if (isTransportError(err)) {
@@ -78,7 +78,9 @@ function failureMessage(
     return "Too many failed sign-in attempts. Wait a minute, then try again.";
   }
   return flow === "signIn"
-    ? "Wrong email or password. New here? Switch to create account."
+    ? canRegisterPassword
+      ? "Wrong email or password. New here? Switch to create account."
+      : "Wrong email or password. New here? Use your invited Google account or contact your producer."
     : "Could not create the account. An account with this email may already exist — try signing in. Passwords need at least 8 characters.";
 }
 
@@ -114,15 +116,22 @@ export default function SignInPage() {
       // visible to the middleware, which an immediate RSC navigation can race.
       window.location.assign("/");
     } catch (err) {
-      setError(failureMessage(err, flow, hadAuthToken));
+      setError(
+        failureMessage(
+          err,
+          flow,
+          hadAuthToken,
+          providers?.passwordSignup === true,
+        ),
+      );
       setBusy(false);
     }
   };
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-6">
-      <CinemaBackdrop />
-      <div className="relative w-full max-w-sm">
+      <CinemaBackdrop image="/brand/sign-in.jpg" />
+      <div className="relative w-full max-w-sm rounded-xl border border-border/60 bg-background/90 p-6 shadow-2xl backdrop-blur-md">
         <div className="mb-8 flex items-center gap-3">
           <KinolabMark className="size-10 shrink-0" />
           <div>
@@ -137,7 +146,12 @@ export default function SignInPage() {
           {flow === "signUp" && (
             <div className="space-y-1.5">
               <Label htmlFor="name">Name</Label>
-              <Input id="name" name="name" placeholder="Ada Lovelace" required />
+              <Input
+                id="name"
+                name="name"
+                placeholder="Ada Lovelace"
+                required
+              />
             </div>
           )}
           <div className="space-y-1.5">
@@ -179,18 +193,26 @@ export default function SignInPage() {
           </Button>
         )}
 
-        <button
-          type="button"
-          className="mt-6 w-full text-center text-sm text-muted-foreground underline-offset-4 hover:underline"
-          onClick={() => {
-            setFlow(flow === "signIn" ? "signUp" : "signIn");
-            setError(null);
-          }}
-        >
-          {flow === "signIn"
-            ? "New here? Create an account"
-            : "Already have an account? Sign in"}
-        </button>
+        {(providers?.passwordSignup !== false || flow === "signUp") && (
+          <button
+            type="button"
+            className="mt-6 w-full text-center text-sm text-muted-foreground underline-offset-4 hover:underline"
+            onClick={() => {
+              setFlow(flow === "signIn" ? "signUp" : "signIn");
+              setError(null);
+            }}
+          >
+            {flow === "signIn"
+              ? "New here? Create an account"
+              : "Already have an account? Sign in"}
+          </button>
+        )}
+        {providers?.passwordSignup === false && (
+          <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground">
+            New team members: use your invited Google account. Existing password
+            accounts can still sign in.
+          </p>
+        )}
       </div>
     </main>
   );

@@ -321,7 +321,7 @@ function FinalCell({ row }: { row: CharacterRow }) {
   );
 }
 
-function CharacterRowMenu({
+export function CharacterRowMenu({
   row,
   productionId,
   canEdit,
@@ -406,4 +406,3 @@ function CharacterRowMenu({
     </>
   );
 }
-

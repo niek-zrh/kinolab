@@ -26,11 +26,22 @@ const env = { ...process.env };
 if (!env.CONVEX_SELF_HOSTED_URL && !env.CONVEX_AGENT_MODE) {
   env.CONVEX_AGENT_MODE = "anonymous";
 }
-const run = (args) =>
-  execFileSync("npx", ["convex", "env", "set", "--", ...args], {
-    stdio: "inherit",
-    env,
-  });
+const run = (args) => {
+  try {
+    execFileSync("npx", ["convex", "env", "set", "--", ...args], {
+      // The CLI can echo the value it stores. Never print the signing key.
+      stdio: "pipe",
+      env,
+    });
+  } catch {
+    // execFileSync errors include argv, including the private key. Do not
+    // forward the original error or captured output to a CI log.
+    console.error(
+      `Could not set ${args[0]}. Check deployment access and retry.`,
+    );
+    process.exit(1);
+  }
+};
 
 run(["JWT_PRIVATE_KEY", pkcs8]);
 run(["JWKS", jwks]);

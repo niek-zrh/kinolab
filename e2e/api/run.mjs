@@ -21,6 +21,7 @@ import { run as validation } from "./validation.mjs";
 import { run as shotsV2 } from "./shots-v2.mjs";
 import { run as elements } from "./elements.mjs";
 import { run as exports } from "./exports.mjs";
+import { run as creativeWorkflows } from "./creative-workflows.mjs";
 
 const health = await fetch(`${CONVEX_URL}/version`).catch(() => null);
 if (!health || !health.ok) {
@@ -39,6 +40,7 @@ for (const [name, fn] of [
   ["Shots v2", shotsV2],
   ["Elements", elements],
   ["Provenance export", exports],
+  ["Creative workflows", creativeWorkflows],
 ]) {
   console.log(`\n── ${name} ${"─".repeat(Math.max(0, 60 - name.length))}`);
   try {
