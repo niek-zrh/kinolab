@@ -9,7 +9,8 @@ production reports, a TV-delivery QC checklist, and a provenance export of
 every prompt and decision.
 
 Built on Next.js 15 + Convex (realtime) + Tailwind v4 + shadcn/ui.
-**User manual (artists first, with screenshots): [docs/MANUAL.md](docs/MANUAL.md).**
+**User manual: in the app — `?` for help on the screen you are on, `/help`
+for the full illustrated guide. How to edit it: [docs/MANUAL.md](docs/MANUAL.md).**
 
 Spec: `stravi-pilot-mega-prompt.md` · second-round brief: `docs/SPEC-v2.md` ·
 decisions log: [DECISIONS.md](DECISIONS.md) ·
@@ -1182,6 +1183,8 @@ convex/               Backend: schema, auth, modules per docs/CONTRACTS.md
   seed.ts             npx convex run seed:run (local demos only)
   migrations.ts       backfills + auditDanglingStorage / markDanglingAssetsMissing
 lib/                  client helpers (copy, format, hotkeys, google-picker, csv)
+  help.ts             per-screen help + the six-stage process (in-app guide)
+public/help/          the guide's screenshots · scripts/capture-help.mjs regenerates them
 e2e/tests/            Playwright specs + helpers.ts · e2e/api/  server-side suite
 scripts/setup-auth.mjs        Convex Auth key generation
 scripts/screenshot-themes.mjs both-theme screenshot walk (dark + light)
@@ -1197,6 +1200,11 @@ writes one human-readable activity row; picks/approvals are immutable;
 tokens never reach a client. UI tokens for both themes (dark by default,
 light as a preference, the Review Room always dark) live in
 `app/globals.css` (spec §9, revised in v1.1 — see §Appearance).
+
+Help is part of the product, not the repo: per-screen guidance in
+`lib/help.ts`, the drawer in `components/app/help-panel.tsx`, the illustrated
+guide at `app/(app)/help/page.tsx`. Regenerate its screenshots with
+`node scripts/capture-help.mjs`.
 
 Visual language (spec §9.2, extended in the v1.2 pass — DECISIONS 2026-09-20):
 the **slate strip** bands every shot and version card, the **status hues** are

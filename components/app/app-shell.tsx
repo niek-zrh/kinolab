@@ -4,7 +4,14 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, ChevronsUpDown, LogOut, Search, Users } from "lucide-react";
+import {
+  Check,
+  ChevronsUpDown,
+  CircleQuestionMark,
+  LogOut,
+  Search,
+  Users,
+} from "lucide-react";
 import { KinolabMark } from "./kinolab-mark";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +28,7 @@ import { AppearanceMenuItems } from "./appearance-control";
 import { CommandPalette } from "./command-palette";
 import { FavoritesBar } from "./favorites-bar";
 import { CreateStudio } from "./create-studio";
-import { KeyboardOverlay } from "./keyboard-overlay";
+import { HelpPanel } from "./help-panel";
 import { NotificationsBell } from "./notifications-bell";
 import { StudioProvider, useStudio } from "./studio-context";
 import { UserAvatar } from "./user-avatar";
@@ -110,6 +117,15 @@ function Shell({ children }: { children: ReactNode }) {
               ⌘K
             </kbd>
           </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setHelpOpen(true)}
+            aria-label="Help"
+            title="Help for this screen (?)"
+          >
+            <CircleQuestionMark className="size-4" />
+          </Button>
           <NotificationsBell />
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -147,7 +163,7 @@ function Shell({ children }: { children: ReactNode }) {
       <div className="flex flex-1 flex-col">{children}</div>
 
       <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
-      <KeyboardOverlay open={helpOpen} onOpenChange={setHelpOpen} />
+      <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   );
 }
