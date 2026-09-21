@@ -17,8 +17,8 @@ jobs:
       NEXT_TELEMETRY_DISABLED: "1"
       CI: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - run: npm install -g pnpm@11.8.0
@@ -27,18 +27,32 @@ jobs:
       - name: Start isolated backend
         run: |
           pnpm exec convex dev > "$RUNNER_TEMP/kinolab-convex.log" 2>&1 &
+          kinolab_convex_pid=$!
+          kinolab_convex_ready=0
           for attempt in $(seq 1 90); do
-            if test -f .env.local && curl -fsS http://127.0.0.1:3210/version >/dev/null; then break; fi
+            if grep -q 'Convex functions ready' "$RUNNER_TEMP/kinolab-convex.log"; then
+              kinolab_convex_ready=1
+              break
+            fi
+            if ! kill -0 "$kinolab_convex_pid" 2>/dev/null; then
+              tail -80 "$RUNNER_TEMP/kinolab-convex.log"
+              exit 1
+            fi
             sleep 1
           done
-          pnpm exec convex dev --once
+          if test "$kinolab_convex_ready" != 1; then
+            tail -80 "$RUNNER_TEMP/kinolab-convex.log"
+            exit 1
+          fi
           node scripts/setup-auth.mjs
       - run: pnpm check
       - run: pnpm test:api
       - run: pnpm test:e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: browser-failures
-          path: test-results/
+          path: |
+            test-results/
+            ${{ runner.temp }}/kinolab-convex.log
           retention-days: 7
