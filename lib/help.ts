@@ -241,6 +241,127 @@ export const PROCESS: { title: string; body: string }[] = [
   },
 ];
 
+/**
+ * From a blank project to a delivered film, in order (v1.7).
+ *
+ * PROCESS above is the six-stage shape of the work. This is the actual
+ * sequence of things someone does, with who does each one and what has to be
+ * true before it will work — the questions a studio asks on day one and
+ * nobody could answer from the stage names alone.
+ *
+ * Every step here is executed on each test run by
+ * `e2e/tests/premiere-journey.spec.ts`, which also captures the screenshots
+ * the guide shows. If a step in this list stops being true, that run fails.
+ */
+export type JourneyStep = {
+  n: number;
+  title: string;
+  who: "Producer" | "Artist" | "Creative Director" | "Anyone";
+  body: string;
+  /** Something that must already be true, where it is not obvious. */
+  needs?: string;
+  image?: string;
+};
+
+export const JOURNEY: JourneyStep[] = [
+  {
+    n: 1,
+    title: "Start the production",
+    who: "Producer",
+    body: "New production, give it a name and a code. Skip the Drive step if the studio hub is not connected yet — it can be added later without redoing anything.",
+    image: "01-production-created.png",
+  },
+  {
+    n: 2,
+    title: "Put the shot list in",
+    who: "Producer",
+    body: "Shots › New shots. Either name a scene and generate numbered shots, or paste a list straight from your sheet. Codes become the filenames everything is filed under, so settle them now — renaming later is possible but leaves a trail.",
+    image: "02-shot-list.png",
+  },
+  {
+    n: 3,
+    title: "Invite the crew",
+    who: "Producer",
+    body: "Team › Invite member, one row per person with their role. The seat attaches the first time they sign in with that exact address.",
+    needs: "An invited person cannot be assigned work until they have signed in once and claimed the seat.",
+    image: "03-team-invited.png",
+  },
+  {
+    n: 4,
+    title: "Assign the work",
+    who: "Producer",
+    body: "On the Shots table, set an assignee and a due date per shot. That is what puts a shot on someone's My work.",
+    image: "04-assigned.png",
+  },
+  {
+    n: 5,
+    title: "The artist finds their queue",
+    who: "Artist",
+    body: "My work groups assigned shots by whose move it is: Needs you first, then In progress, With review and Settled. Nothing there on day one is normal.",
+    image: "05-my-work.png",
+  },
+  {
+    n: 6,
+    title: "Generate and upload options",
+    who: "Artist",
+    body: "Work in whatever tool you generate with, then upload each result to the shot as a version — drop, ⌘V paste, or browse. Fill in tool, model, seed and prompt: that is what makes a result repeatable and what the provenance export carries out at the end.",
+    needs: "Versions are never renumbered or replaced. A better take is a new version.",
+    image: "06-options-uploaded.png",
+  },
+  {
+    n: 7,
+    title: "The shot reaches review",
+    who: "Anyone",
+    body: "Options landing moves the shot into the Review queue on its own — nobody has to remember to hand it over.",
+    image: "07-review-queue.png",
+  },
+  {
+    n: 8,
+    title: "Compare and pick",
+    who: "Creative Director",
+    body: "In the Review Room press 1–4 to put that many options side by side under one shared zoom. S shortlists, X rejects with a reason, P picks. The pick is the decision: it is recorded with who and why, and the file is copied into Approved/ under its canonical name.",
+    needs: "Only Creative Directors, Producers, Supervisors (in their stages) and Owners can pick.",
+    image: "08-review-room.png",
+  },
+  {
+    n: 9,
+    title: "The decision is on the record",
+    who: "Anyone",
+    body: "Decisions is the ledger: every pick, gate and sign-off in order, with who and why. Nothing is deleted — a later pick supersedes an earlier one and both stay.",
+    image: "10-decisions.png",
+  },
+  {
+    n: 10,
+    title: "Sign off the stage gate",
+    who: "Producer",
+    body: "On the Board, a stage's menu requests sign-off, then approves or rejects with a note. That is how a stage actually moves.",
+    needs: "Set the gate approvers first, in Settings › Stages & gates. A brand-new production has none, so the gate cannot be decided until someone is named.",
+    image: "11-gate-approved.png",
+  },
+  {
+    n: 11,
+    title: "Run delivery QC",
+    who: "Producer",
+    body: "QC › New QC run, against the studio template (seed the standard TV-delivery template the first time). Work down the checklist; a failing required check blocks the master until it is fixed and re-checked.",
+    needs: "A run needs a name before it will start.",
+    image: "12-qc-run.png",
+  },
+  {
+    n: 12,
+    title: "Report the day",
+    who: "Producer",
+    body: "A daily report compiles at 18:00 production time, or generate one now. Publishing freezes it and notifies the team.",
+    image: "13-daily-report.png",
+  },
+  {
+    n: 13,
+    title: "Hand the record over with the film",
+    who: "Producer",
+    body: "Decisions › Export provenance writes every version, prompt, seed, file identity and decision to one file. That is the artifact that leaves with the delivery, and the reason any of this was recorded.",
+    image: "14-provenance.png",
+  },
+];
+
 /** `/p/abc123/shots/def456` → `/p/:id/shots/:id`. */
 function normalize(pathname: string): string {
   const parts = pathname.split("/").filter(Boolean);

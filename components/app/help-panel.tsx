@@ -12,7 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PROCESS, topicFor } from "@/lib/help";
+import { JOURNEY, PROCESS, topicFor } from "@/lib/help";
 import { SHORTCUTS } from "./shortcuts";
 import { cn } from "@/lib/utils";
 
@@ -92,17 +92,58 @@ export function HelpPanel({
               )}
             </TabsContent>
 
-            <TabsContent value="process" className="mt-4">
-              <ol className="space-y-3">
-                {PROCESS.map((step) => (
-                  <li key={step.title}>
-                    <p className="text-sm font-medium">{step.title}</p>
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                      {step.body}
-                    </p>
-                  </li>
-                ))}
-              </ol>
+            <TabsContent value="process" className="mt-4 space-y-6">
+              <div>
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  The shape of the work
+                </h3>
+                <ol className="space-y-3">
+                  {PROCESS.map((step) => (
+                    <li key={step.title}>
+                      <p className="text-sm font-medium">{step.title}</p>
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        {step.body}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              {/* The same lifecycle as an ordered checklist: what someone
+                  actually does next, and who does it. */}
+              <div>
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  New project to premiere
+                </h3>
+                <ol className="space-y-2">
+                  {JOURNEY.map((jstep) => (
+                    <li key={jstep.n} className="flex gap-2.5 text-sm">
+                      <span className="mt-px font-mono text-[11px] text-muted-foreground">
+                        {jstep.n}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="font-medium">{jstep.title}</span>
+                        <span className="ml-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {jstep.who}
+                        </span>
+                        {jstep.needs && (
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            {jstep.needs}
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                <Link
+                  href="/help#journey"
+                  onClick={() => onOpenChange(false)}
+                  className="mt-3 inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  See it with screenshots
+                  <ArrowUpRight className="size-3" />
+                </Link>
+              </div>
             </TabsContent>
 
             <TabsContent value="keys" className="mt-4 space-y-5">

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/app/page-shell";
-import { PROCESS } from "@/lib/help";
+import { JOURNEY, PROCESS } from "@/lib/help";
 import { SHORTCUTS } from "@/components/app/shortcuts";
 import { cn } from "@/lib/utils";
 
@@ -161,10 +161,68 @@ export default function HelpPage() {
         </ol>
       </section>
 
+      {/* The full lifecycle. Every step here is executed on each test run by
+          e2e/tests/premiere-journey.spec.ts, which also captures these
+          screenshots — so the walkthrough cannot quietly stop being true. */}
+      <section id="journey" className="mb-10 scroll-mt-20">
+        <h2 className="font-display text-lg font-semibold tracking-tight">
+          From a new project to premiere
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          The whole run, in order, with who does each step and what has to be
+          true first.
+        </p>
+        <ol className="mt-5 space-y-6">
+          {JOURNEY.map((jstep) => (
+            <li key={jstep.n} className="flex gap-4">
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-muted font-mono text-xs text-muted-foreground">
+                {jstep.n}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <h3 className="text-sm font-semibold">{jstep.title}</h3>
+                  <span className="rounded-full bg-secondary px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {jstep.who}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {jstep.body}
+                </p>
+                {jstep.needs && (
+                  <p className="mt-2 rounded-md border-l-2 border-l-tape bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                    {jstep.needs}
+                  </p>
+                )}
+                {jstep.image && (
+                  <figure className="mt-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/help/journey/${jstep.image}`}
+                      alt={`Step ${jstep.n}: ${jstep.title}`}
+                      loading="lazy"
+                      className="w-full rounded-lg ring-1 ring-foreground/10"
+                    />
+                  </figure>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+
       <div className="flex flex-col gap-8 lg:flex-row">
         {/* Section nav — sticky, so the walkthrough stays navigable. */}
         <nav className="shrink-0 lg:sticky lg:top-20 lg:h-fit lg:w-44">
           <ul className="flex flex-wrap gap-1 lg:flex-col">
+            <li>
+              <a
+                href="#journey"
+                className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+              >
+                <ChevronRight className="size-3 shrink-0 opacity-50" />
+                New project to premiere
+              </a>
+            </li>
             {SECTIONS.map((section) => (
               <li key={section.id}>
                 <a
