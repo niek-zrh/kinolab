@@ -69,28 +69,41 @@ function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded focus:bg-background focus:p-3">Skip to content</a>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded focus:bg-background focus:p-3"
+      >
+        Skip to content
+      </a>
       <header className="no-print sticky top-0 z-40 flex h-12 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur">
         <Link
           href="/"
-          className="flex size-7 shrink-0 items-center justify-center"
+          className="flex shrink-0 items-center justify-center gap-2.5 pr-2"
           aria-label="Kinolab home"
         >
           <KinolabMark className="size-6" />
+          <span className="hidden text-sm font-semibold tracking-tight lg:inline">
+            kinolab<span className="ml-1 text-tape">.</span>
+          </span>
         </Link>
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium hover:bg-accent"
+            className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium hover:bg-accent"
             aria-label="Switch studio"
           >
-            {activeStudio?.name}
+            <span className="max-w-28 truncate sm:max-w-48">
+              {activeStudio?.name}
+            </span>
             <ChevronsUpDown className="size-3.5 text-muted-foreground" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
             <DropdownMenuGroup>
               <DropdownMenuLabel>Studios</DropdownMenuLabel>
               {viewer.studios.map((s) => (
-                <DropdownMenuItem key={s._id} onClick={() => setStudioId(s._id)}>
+                <DropdownMenuItem
+                  key={s._id}
+                  onClick={() => setStudioId(s._id)}
+                >
                   <span className="flex-1 truncate">{s.name}</span>
                   {s._id === studioId && <Check className="size-4" />}
                 </DropdownMenuItem>
@@ -133,7 +146,11 @@ function Shell({ children }: { children: ReactNode }) {
               className="rounded-full p-1 hover:bg-accent"
               aria-label="Account"
             >
-              <UserAvatar name={viewer.name} image={viewer.image} className="size-7" />
+              <UserAvatar
+                name={viewer.name}
+                image={viewer.image}
+                className="size-7"
+              />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuGroup>

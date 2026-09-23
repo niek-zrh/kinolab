@@ -25,6 +25,17 @@ export type HelpTopic = {
 /** Ordered most specific first — `topicFor` returns the first match. */
 export const HELP_TOPICS: HelpTopic[] = [
   {
+    route: "/p/:id/assistants",
+    title: "AI workspace — planned",
+    purpose: "Explore future AI assistance without sending any production data.",
+    steps: [
+      "Filter by Plan, Create, or Finish to see where assistance could fit your process.",
+      "Choose Explore assistant to read the proposed inputs, output, and human approval step.",
+      "Use the workspace link on a card to continue working with today's tools.",
+    ],
+    tip: "These assistants are design previews, not connected services. Nothing runs, changes your work, or incurs an AI charge. Activation and data permissions will be a separate future setup.",
+  },
+  {
     route: "/p/:id/review/:id",
     title: "Review Room",
     purpose:
@@ -79,6 +90,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Start at the top: Needs you is rework to address, or shots with no options yet.",
       "With review means your options are in and someone else owes a decision — nothing to do.",
       "Open a shot to add options.",
+      "Use the assignment filters to focus on one state; Show all work clears an empty view. The desk links open your shots and reference board.",
     ],
     tip: "Empty on day one is normal. Shots appear here the moment a producer puts your name on one.",
   },

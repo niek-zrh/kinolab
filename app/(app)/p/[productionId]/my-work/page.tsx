@@ -5,26 +5,21 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Brush, CalendarDays, Layers } from "lucide-react";
 import type { CSSProperties } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/app/empty-state";
 import { ShotFrame } from "@/components/app/shot-frame";
-import {
-  STATUS_DOT_CLASSES,
-  STATUS_VAR,
-} from "@/components/app/status-pill";
+import { STATUS_DOT_CLASSES, STATUS_VAR } from "@/components/app/status-pill";
 import { useStudio } from "@/components/app/studio-context";
 import type { ShotStatusKey } from "@/convex/lib/domain";
 import { formatDueDate } from "../board/_components/board-helpers";
 import { todayInTz } from "@/lib/format";
-import {
-  PageHeader,
-  PageShell,
-} from "@/components/app/page-shell";
+import { PageHeader, PageShell } from "@/components/app/page-shell";
 
 import { cn } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui/button";
 
 type ShotRow = (typeof api.shots.list._returnType)[number];
 
@@ -77,7 +72,11 @@ const SECTIONS: {
     title: "With review",
     blurb: "Options are in. Waiting on a decision.",
   },
-  { bucket: "settled", title: "Settled", blurb: "Decided. Here for reference." },
+  {
+    bucket: "settled",
+    title: "Settled",
+    blurb: "Decided. Here for reference.",
+  },
 ];
 
 /** Statuses where a past due date no longer matters (as in the Shots table). */
@@ -136,7 +135,9 @@ function WorkCard({ shot, today }: { shot: ShotRow; today: string }) {
       </div>
       <div className="mt-1.5 px-0.5">
         <p className="truncate text-[13px] leading-tight text-foreground/90">
-          {shot.title ?? <span className="text-muted-foreground">Untitled</span>}
+          {shot.title ?? (
+            <span className="text-muted-foreground">Untitled</span>
+          )}
         </p>
         <p className="mt-0.5 flex items-center gap-2 truncate font-mono text-[11px] text-muted-foreground">
           <span className="truncate">{shot.code}</span>
@@ -210,6 +211,7 @@ export default function MyWorkPage() {
   const params = useParams<{ productionId: string }>();
   const productionId = params.productionId as Id<"productions">;
   const { viewer } = useStudio();
+  const [focus, setFocus] = useState<Bucket | "all">("all");
   const production = useQuery(api.productions.get, { productionId });
   // Due dates are production-local (lib/format), not the viewer's clock.
   const today = production?.timezone
@@ -224,7 +226,9 @@ export default function MyWorkPage() {
   // default (v2 item b) — an artist assigned one still has to see it.
   const slotShots = useQuery(
     api.shots.list,
-    viewer ? { productionId, assigneeId: viewer._id, elements: "only" } : "skip",
+    viewer
+      ? { productionId, assigneeId: viewer._id, elements: "only" }
+      : "skip",
   );
 
   const byBucket = useMemo(() => {
@@ -262,6 +266,7 @@ export default function MyWorkPage() {
       <PageHeader
         title="My work"
         favoriteLabel="My work"
+        description="Your assignments, your references, your next frame."
         actions={
           byBucket && total > 0 ? (
             <span className="font-mono text-xs text-muted-foreground">
@@ -270,6 +275,89 @@ export default function MyWorkPage() {
           ) : undefined
         }
       />
+
+      <section className="editorial-banner mb-5" aria-label="Creative desk">
+        <img
+          src="/brand/creative-workbench-v1.jpg"
+          alt=""
+          className="absolute inset-0 size-full object-cover"
+        />
+        <div className="absolute inset-0 bg-black/70 sm:bg-transparent sm:bg-gradient-to-r sm:from-black/85 sm:via-black/60 sm:to-transparent" />
+        <div className="relative max-w-lg p-6 sm:p-7">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/65">
+            Artist workspace
+          </p>
+          <h2 className="text-2xl font-semibold tracking-tight text-white">
+            Your creative desk.
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-white/75">
+            Pick up an assignment or find the reference that brings the next
+            frame into focus.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href={`/p/${productionId}/shots`}
+              className={buttonVariants({
+                size: "sm",
+                className: "bg-white text-black hover:bg-white/90",
+              })}
+            >
+              Browse all shots
+            </Link>
+            <Link
+              href={`/p/${productionId}/references`}
+              className={buttonVariants({
+                size: "sm",
+                variant: "outline",
+                className:
+                  "border-white/30 bg-black/20 text-white hover:bg-white/15 hover:text-white",
+              })}
+            >
+              Reference board
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {byBucket && total > 0 && (
+        <div
+          role="group"
+          aria-label="Filter assignments"
+          className="segmented-control mb-5"
+        >
+          <button
+            type="button"
+            onClick={() => setFocus("all")}
+            aria-pressed={focus === "all"}
+            className={cn(
+              "segmented-option",
+              focus === "all" && "segmented-option-active",
+            )}
+          >
+            All work{" "}
+            <span className="ml-1 tabular-nums text-muted-foreground">
+              {total}
+            </span>
+          </button>
+          {SECTIONS.map(({ bucket, title }) => (
+            <button
+              key={bucket}
+              type="button"
+              onClick={() => setFocus(bucket)}
+              aria-pressed={focus === bucket}
+              className={cn(
+                "segmented-option",
+                focus === bucket && "segmented-option-active",
+              )}
+            >
+              {title}{" "}
+              <span className="ml-1 tabular-nums text-muted-foreground">
+                {byBucket[bucket].length}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {byBucket === undefined ? (
         <div className="space-y-3">
@@ -281,17 +369,26 @@ export default function MyWorkPage() {
           icon={<Brush />}
           title="Nothing is assigned to you in this production."
           description="Shots appear here as soon as someone puts your name on one."
+        />
+      ) : focus !== "all" && byBucket[focus].length === 0 ? (
+        <EmptyState
+          icon={<Brush />}
+          title="No assignments in this view."
+          description="Your other work is one click away."
         >
-          <Link
-            href={`/p/${productionId}/shots`}
-            className="text-sm underline underline-offset-2 hover:text-foreground"
+          <button
+            type="button"
+            className="text-sm underline underline-offset-4"
+            onClick={() => setFocus("all")}
           >
-            Browse all shots
-          </Link>
+            Show all work
+          </button>
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-3">
-          {SECTIONS.map((section) => (
+          {SECTIONS.filter(
+            (section) => focus === "all" || section.bucket === focus,
+          ).map((section) => (
             <Section
               key={section.bucket}
               title={section.title}

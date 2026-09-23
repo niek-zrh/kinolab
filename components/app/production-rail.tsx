@@ -5,7 +5,13 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ComponentType, type DragEvent } from "react";
+import {
+  Fragment,
+  useEffect,
+  useState,
+  type ComponentType,
+  type DragEvent,
+} from "react";
 import {
   Brush,
   BookOpen,
@@ -27,6 +33,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Stamp,
+  Sparkles,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -39,6 +46,7 @@ type RailItem = {
   label: string;
   icon: ComponentType<{ className?: string }>;
   exact?: boolean;
+  group: "Workspace" | "Create" | "Production" | "Studio";
 };
 
 /**
@@ -49,23 +57,70 @@ type RailItem = {
  * (DECISIONS 2026-09-19); the manager-only cards gate themselves.
  */
 const ITEMS: RailItem[] = [
-  // First on purpose: everyone else's screens answer "how is the production
-  // doing", this one answers "what is on me".
-  { href: "/my-work", label: copy.nav.myWork, icon: Brush },
-  { href: "", label: copy.nav.overview, icon: LayoutDashboard, exact: true },
-  { href: "/board", label: copy.nav.board, icon: Columns3 },
-  { href: "/shots", label: copy.nav.shots, icon: Film },
-  { href: "/storyboard", label: "Storyboard", icon: BookOpen },
-  { href: "/references", label: "Reference board", icon: Palette },
+  // Group the shared overview and personal work together before creative tools.
+  // A saved custom order still wins over these defaults.
+  {
+    href: "",
+    label: copy.nav.overview,
+    icon: LayoutDashboard,
+    exact: true,
+    group: "Workspace",
+  },
+  { href: "/my-work", label: copy.nav.myWork, icon: Brush, group: "Workspace" },
+  { href: "/board", label: copy.nav.board, icon: Columns3, group: "Workspace" },
+  { href: "/shots", label: copy.nav.shots, icon: Film, group: "Create" },
+  { href: "/storyboard", label: "Storyboard", icon: BookOpen, group: "Create" },
+  {
+    href: "/references",
+    label: "Reference board",
+    icon: Palette,
+    group: "Create",
+  },
   // Characters sits with the other content rather than under a shouted
   // "Pre-production" heading: a character is a thing you make, like a shot.
-  { href: "/characters", label: copy.nav.characters, icon: Users },
-  { href: "/review", label: copy.nav.review, icon: MonitorPlay },
-  { href: "/files", label: copy.nav.files, icon: FolderOpen },
-  { href: "/decisions", label: copy.nav.decisions, icon: Stamp },
-  { href: "/reports", label: copy.nav.reports, icon: FileText },
-  { href: "/qc", label: copy.nav.qc, icon: ShieldCheck },
-  { href: "/settings", label: copy.nav.settings, icon: Settings },
+  {
+    href: "/characters",
+    label: copy.nav.characters,
+    icon: Users,
+    group: "Create",
+  },
+  {
+    href: "/review",
+    label: copy.nav.review,
+    icon: MonitorPlay,
+    group: "Production",
+  },
+  {
+    href: "/files",
+    label: copy.nav.files,
+    icon: FolderOpen,
+    group: "Production",
+  },
+  {
+    href: "/decisions",
+    label: copy.nav.decisions,
+    icon: Stamp,
+    group: "Production",
+  },
+  {
+    href: "/reports",
+    label: copy.nav.reports,
+    icon: FileText,
+    group: "Production",
+  },
+  { href: "/qc", label: copy.nav.qc, icon: ShieldCheck, group: "Production" },
+  {
+    href: "/assistants",
+    label: "AI workspace",
+    icon: Sparkles,
+    group: "Studio",
+  },
+  {
+    href: "/settings",
+    label: copy.nav.settings,
+    icon: Settings,
+    group: "Studio",
+  },
 ];
 
 const ALL_HREFS = ITEMS.map((i) => i.href);
@@ -152,7 +207,7 @@ export function ProductionRail({
       <aside
         className={cn(
           "no-print sticky top-12 hidden h-[calc(100dvh-3rem)] shrink-0 flex-col border-r bg-sidebar transition-[width] duration-200 md:flex",
-          collapsed ? "w-14" : "w-52",
+          collapsed ? "w-14" : "w-56",
         )}
       >
         <div className="flex items-start gap-1 border-b px-3 py-3">
@@ -185,8 +240,11 @@ export function ProductionRail({
           </button>
         </div>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-          {visible.map((item) => {
+        <nav
+          aria-label="Production workspace"
+          className="flex-1 space-y-0.5 overflow-y-auto p-2"
+        >
+          {visible.map((item, index) => {
             const href = `${base}${item.href}`;
             const active = item.exact
               ? pathname === href
@@ -201,12 +259,17 @@ export function ProductionRail({
                 {active && !editing && (
                   <span
                     aria-hidden
-                    className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-foreground"
+                    className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-tape"
                   />
                 )}
                 <Icon className="size-4 shrink-0" />
                 {!collapsed && (
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                )}
+                {!collapsed && item.href === "/assistants" && !editing && (
+                  <span className="text-[9px] text-muted-foreground">
+                    Planned
+                  </span>
                 )}
                 {!collapsed && badge && !editing && (
                   <span
@@ -224,7 +287,7 @@ export function ProductionRail({
             );
 
             const shared = cn(
-              "relative flex w-full items-center gap-2.5 rounded-md py-1.5 pl-2.5 pr-2 text-sm transition-colors duration-120",
+              "relative flex min-h-8 w-full items-center gap-2.5 rounded-lg py-1 pl-2.5 pr-2 text-[13px] transition-colors duration-150",
               collapsed && "justify-center px-0",
               active && !editing
                 ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
@@ -269,15 +332,29 @@ export function ProductionRail({
             }
 
             return (
-              <Link
-                key={item.href}
-                href={href}
-                aria-current={active ? "page" : undefined}
-                title={collapsed ? item.label : undefined}
-                className={shared}
-              >
-                {body}
-              </Link>
+              <Fragment key={item.href}>
+                {!collapsed &&
+                  prefs.order.length === 0 &&
+                  (index === 0 || visible[index - 1].group !== item.group) && (
+                    <p
+                      className={cn(
+                        "eyebrow px-2.5 pb-1 pt-2",
+                        index === 0 && "pt-1",
+                      )}
+                    >
+                      {item.group}
+                    </p>
+                  )}
+                <Link
+                  href={href}
+                  aria-current={active ? "page" : undefined}
+                  aria-label={collapsed ? item.label : undefined}
+                  title={collapsed ? item.label : undefined}
+                  className={shared}
+                >
+                  {body}
+                </Link>
+              </Fragment>
             );
           })}
 

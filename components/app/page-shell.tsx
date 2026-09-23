@@ -5,6 +5,8 @@ import { Star } from "lucide-react";
 import type { ReactNode } from "react";
 import { MAX_FAVORITES, useFavorites } from "./favorites";
 import { cn } from "@/lib/utils";
+import { assistantForPath } from "@/lib/assistant-roadmap";
+import { AssistantPreview } from "./assistant-preview";
 
 /**
  * One page frame for every screen (v1.3).
@@ -41,7 +43,10 @@ export function PageShell({
   className?: string;
 }) {
   return (
-    <main id="main-content" className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+    <main
+      id="main-content"
+      className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7"
+    >
       <div className={cn("w-full", WIDTHS[width], className)}>{children}</div>
     </main>
   );
@@ -107,8 +112,10 @@ export function PageHeader({
   /** Label to store when pinned; omit to hide the star (detail pages). */
   favoriteLabel?: string;
 }) {
+  const pathname = usePathname();
+  const assistant = assistantForPath(pathname);
   return (
-    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           {/* `meta` sits INSIDE the heading on purpose: it belongs to the
@@ -121,8 +128,7 @@ export function PageHeader({
               <>
                 {/* A real space, not just the margin: accessible names join
                     text nodes verbatim, so without it the heading announces
-                    "Characters· 3". */}
-                {" "}
+                    "Characters· 3". */}{" "}
                 <span className="font-sans text-sm font-normal text-muted-foreground">
                   {meta}
                 </span>
@@ -137,7 +143,12 @@ export function PageHeader({
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         )}
       </div>
-      {actions && <div className="no-print flex flex-wrap items-center gap-2">{actions}</div>}
+      {(actions || assistant) && (
+        <div className="no-print flex flex-wrap items-center gap-2">
+          {assistant && <AssistantPreview assistant={assistant} />}
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

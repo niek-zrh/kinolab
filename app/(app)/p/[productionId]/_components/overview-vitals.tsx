@@ -4,100 +4,21 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import Link from "next/link";
+import {
+  ArrowRight,
+  BookOpen,
+  Brush,
+  CheckCheck,
+  Film,
+  MonitorPlay,
+} from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { STATUS_DOT_CLASSES } from "@/components/app/status-pill";
-import type { ShotStatusKey } from "@/convex/lib/domain";
-import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/app/page-shell";
+import { buttonVariants } from "@/components/ui/button";
 
-const DONE_STATUSES = new Set<ShotStatusKey>(["approved", "final", "delivered"]);
-const REVIEW_STATUSES = new Set<ShotStatusKey>(["options_ready", "in_review"]);
+const DONE = new Set(["approved", "final", "delivered"]);
 
-/**
- * Share of the production that is signed off, as a dial rather than a
- * sentence. Percent lives in the middle in mono — the same tabular treatment
- * every other number on the overview uses.
- */
-function ProgressRing({ value, size = 60 }: { value: number; size?: number }) {
-  const stroke = 5;
-  const r = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * r;
-  const offset = circumference * (1 - Math.min(Math.max(value, 0), 1));
-
-  return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} aria-hidden className="-rotate-90">
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          strokeWidth={stroke}
-          className="stroke-foreground/10"
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          className="stroke-status-approved transition-[stroke-dashoffset] duration-500"
-        />
-      </svg>
-      <span className="absolute inset-0 flex items-center justify-center font-mono text-xs tabular-nums">
-        {Math.round(value * 100)}%
-      </span>
-    </div>
-  );
-}
-
-function Vital({
-  dot,
-  label,
-  value,
-  href,
-  accent = false,
-}: {
-  dot: string;
-  label: string;
-  value: number;
-  href?: string;
-  accent?: boolean;
-}) {
-  const body = (
-    <>
-      <span className={cn("size-1.5 shrink-0 rounded-full", dot)} />
-      <span className="font-mono text-sm tabular-nums">{value}</span>
-      <span className="text-xs text-muted-foreground">{label}</span>
-    </>
-  );
-
-  const className = cn(
-    "flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors duration-120",
-    accent && "bg-tape/10 text-tape",
-    href && "hover:bg-muted",
-  );
-
-  return href ? (
-    <Link href={href} className={className}>
-      {body}
-    </Link>
-  ) : (
-    <span className={className}>{body}</span>
-  );
-}
-
-/**
- * The production at a glance (spec F3, v1.2): one band carrying the page
- * heading, how far the production has got, the two or three numbers a
- * producer opens the app for, and the picked frames themselves.
- *
- * The frames themselves moved out to <OverviewReel> in v1.5, which shows the
- * same work directly below this band at a size worth looking at — two strips
- * of the same thumbnails was one too many.
- */
+/** Production artwork takes the lead; generated brand art is only a fallback. */
 export function OverviewVitals({
   productionId,
 }: {
@@ -105,78 +26,115 @@ export function OverviewVitals({
 }) {
   const production = useQuery(api.productions.get, { productionId });
   const shots = useQuery(api.shots.list, { productionId });
-  const pending = useQuery(api.approvals.myPending, {});
-
+  const counts = useQuery(api.shots.counts, { productionId });
+  const base = `/p/${productionId}`;
   const live = (shots ?? []).filter((s) => s.status !== "killed");
-  const done = live.filter((s) => DONE_STATUSES.has(s.status)).length;
-  const inReview = live.filter((s) => REVIEW_STATUSES.has(s.status)).length;
-  const needsYou = (pending ?? []).filter(
-    (a) => a.productionId === productionId,
-  ).length;
+  const done = live.filter((s) => DONE.has(s.status)).length;
+  const cover =
+    live.find((s) => s.coverThumbUrl && DONE.has(s.status)) ??
+    live.find((s) => s.coverThumbUrl);
+  const progress = live.length ? Math.round((done / live.length) * 100) : 0;
 
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-4 rounded-xl bg-card px-4 py-3.5 ring-1 ring-foreground/10">
-      <div className="flex min-w-0 items-center gap-3.5">
-        {shots === undefined ? (
-          <Skeleton className="size-[60px] rounded-full" />
-        ) : (
-          <ProgressRing value={live.length ? done / live.length : 0} />
-        )}
-
-        <div className="min-w-0">
-          <h1 className="font-display text-xl font-semibold leading-tight tracking-tight">
-            Overview
-          </h1>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {production ? (
-              <>
-                <span className="font-medium text-foreground/80">
-                  {production.name}
-                </span>
-                <span className="font-mono"> · {production.code}</span>
-                {production.kind === "episodic" ? " · Series" : ""}
-              </>
-            ) : (
-              "…"
-            )}
+    <>
+      <PageHeader
+        title="Overview"
+        favoriteLabel="Overview"
+        description="The creative work. The next decision. One shared view."
+      />
+      <section
+        className="editorial-banner mb-5"
+        aria-label="Production at a glance"
+      >
+        <img
+          src={cover?.coverThumbUrl ?? "/brand/creative-workbench-v1.jpg"}
+          alt=""
+          className="absolute inset-0 size-full object-cover object-center"
+          fetchPriority="high"
+        />
+        <div className="absolute inset-0 bg-black/70 sm:bg-transparent sm:bg-gradient-to-r sm:from-black/90 sm:via-black/65 sm:to-black/15" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+        <div className="relative flex min-h-64 flex-col justify-center px-6 py-8 sm:px-8">
+          <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/70">
+            Production workspace {production && ` / ${production.code}`}
           </p>
-
-          {shots === undefined ? (
-            <Skeleton className="mt-2 h-5 w-64" />
-          ) : (
-            <div className="-mx-1.5 mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-1">
-              <Vital
-                dot="bg-muted-foreground/50"
-                label={live.length === 1 ? "shot" : "shots"}
-                value={live.length}
-                href={`/p/${productionId}/shots`}
-              />
-              <Vital
-                dot={STATUS_DOT_CLASSES.in_review}
-                label="in review"
-                value={inReview}
-                href={`/p/${productionId}/review`}
-              />
-              <Vital
-                dot={STATUS_DOT_CLASSES.approved}
-                label="approved"
-                value={done}
-                href={`/p/${productionId}/shots?status=approved`}
-              />
-              {needsYou > 0 && (
-                <Vital
-                  dot="bg-tape"
-                  label="need you"
-                  value={needsYou}
-                  href={`/p/${productionId}/decisions`}
-                  accent
-                />
-              )}
-            </div>
-          )}
+          <h2 className="max-w-2xl break-words text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            {production?.name ?? "Your next story"}
+          </h2>
+          <p className="mt-2 max-w-md text-sm leading-relaxed text-white/75">
+            {production?.kind === "episodic" ? "Series" : "Film"} · A shared
+            space to shape, make, and finish the story.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <Link
+              href={`${base}/storyboard`}
+              className={buttonVariants({
+                className: "border-white bg-white text-black hover:bg-white/90",
+              })}
+            >
+              <BookOpen className="size-4" />
+              Open storyboard
+            </Link>
+            <Link
+              href={`${base}/my-work`}
+              className={buttonVariants({
+                variant: "outline",
+                className:
+                  "border-white/30 bg-black/20 text-white hover:bg-white/15 hover:text-white",
+              })}
+            >
+              <Brush className="size-4" />
+              My work
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
+          <p className="mt-5 text-[10px] text-white/65">
+            {cover
+              ? `Production frame · ${cover.code}`
+              : "Studio artwork · Add shot versions to make this space your own"}
+          </p>
         </div>
-      </div>
-
-    </div>
+        <div className="relative grid grid-cols-3 border-t border-white/15 bg-black/35 backdrop-blur-sm">
+          {[
+            {
+              label: "Active shots",
+              value: live.length,
+              icon: Film,
+              href: `${base}/shots`,
+            },
+            {
+              label: "In review queue",
+              value: counts?.reviewQueue ?? 0,
+              icon: MonitorPlay,
+              href: `${base}/review`,
+            },
+            {
+              label: "Signed off",
+              value: `${progress}%`,
+              icon: CheckCheck,
+              href: `${base}/board`,
+            },
+          ].map(({ label, value, icon: Icon, href }) => (
+            <Link
+              key={label}
+              href={href}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-r border-white/10 px-4 py-3 transition-colors last:border-r-0 hover:bg-white/10 sm:px-6"
+            >
+              <Icon className="hidden size-4 text-white/60 sm:block" />
+              {shots === undefined || counts === undefined ? (
+                <Skeleton className="h-6 w-8 bg-white/10" />
+              ) : (
+                <span className="text-xl font-semibold tabular-nums text-white">
+                  {value}
+                </span>
+              )}
+              <span className="text-[11px] text-white/75 sm:text-xs">
+                {label}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
+    </>
   );
 }

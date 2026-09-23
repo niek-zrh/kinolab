@@ -13,205 +13,271 @@
     @apply h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40;
   }
   .creative-banner {
-    background: linear-gradient(110deg, color-mix(in oklab, var(--tape) 7%, var(--card)), var(--card) 55%);
+    background: linear-gradient(
+      110deg,
+      color-mix(in oklab, var(--tape) 7%, var(--card)),
+      var(--card) 55%
+    );
+  }
+  .studio-panel {
+    @apply rounded-xl border bg-card;
+    box-shadow:
+      0 2px 8px rgb(0 0 0 / 0.035),
+      inset 0 1px 0 rgb(255 255 255 / 0.025);
+  }
+  .editorial-banner {
+    @apply relative isolate overflow-hidden rounded-2xl border border-white/10 bg-[#151619] text-white;
+  }
+  .eyebrow {
+    @apply text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground;
+  }
+  .workspace-icon {
+    @apply inline-flex size-12 shrink-0 items-center justify-center rounded-xl border bg-muted/60 text-foreground;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07);
+  }
+  .segmented-control {
+    @apply inline-flex max-w-full flex-wrap gap-1 rounded-lg border bg-muted/70 p-1;
+  }
+  .segmented-option {
+    @apply min-h-8 rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground;
+  }
+  .segmented-option-active {
+    @apply bg-card text-foreground shadow-sm ring-1 ring-border;
+  }
+  /* Native-feeling keyboard focus, also on custom controls and card links. */
+  :where(a, button, select, input, textarea):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
   }
 }
 
 @media print {
-  .no-print, [data-sonner-toaster], nextjs-portal { display: none !important; }
-  html, body { background: white !important; color: black !important; }
-  .storyboard-page { max-width: none !important; --muted-foreground: #454545; --foreground: #111; --card: #fff; --border: #ccc; }
-  .storyboard-page .creative-banner { background: white; }
-  .storyboard-page .storyboard-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .storyboard-grid > a { break-inside: avoid; background: white !important; color: black; border-color: #aaa; }
-  .storyboard-scene { break-inside: auto; margin-bottom: 24px; }
-  .storyboard-scene h2 { break-after: avoid; }
-  .storyboard-page img { print-color-adjust: exact; }
+  .no-print,
+  [data-sonner-toaster],
+  nextjs-portal {
+    display: none !important;
+  }
+  html,
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .storyboard-page {
+    max-width: none !important;
+    --muted-foreground: #454545;
+    --foreground: #111;
+    --card: #fff;
+    --border: #ccc;
+  }
+  .storyboard-page .creative-banner {
+    background: white;
+  }
+  .storyboard-page .storyboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .storyboard-grid > a {
+    break-inside: avoid;
+    background: white !important;
+    color: black;
+    border-color: #aaa;
+  }
+  .storyboard-scene {
+    break-inside: auto;
+    margin-bottom: 24px;
+  }
+  .storyboard-scene h2 {
+    break-after: avoid;
+  }
+  .storyboard-page img {
+    print-color-adjust: exact;
+  }
 }
 
 @theme inline {
-    --font-sans: var(--font-archivo);
-    --font-display: var(--font-archivo);
-    --font-mono: var(--font-martian-mono);
-    --font-heading: var(--font-archivo);
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+  --font-sans: var(--font-archivo);
+  --font-display: var(--font-archivo);
+  --font-mono: var(--font-martian-mono);
+  --font-heading: var(--font-archivo);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 
-    /* Kinolab brand tokens (kinolab.ai) */
-    --color-tape: var(--tape);
-    /* Literal on purpose: the tape accent is the same orange in both themes and
+  /* Kinolab brand tokens (kinolab.ai) */
+  --color-tape: var(--tape);
+  /* Literal on purpose: the tape accent is the same orange in both themes and
        always carries dark glyphs (brand rule), so its foreground never flips. */
-    --color-tape-foreground: #16181d;
+  --color-tape-foreground: #16181d;
 
-    /* Shot status hues (spec §9.2). Per-theme values live in :root / .dark
+  /* Shot status hues (spec §9.2). Per-theme values live in :root / .dark
        below — pill text on its 10% tint ≥ 4.5:1, dots and strip edges ≥ 3:1
        against card, strip and page in both themes (checked 2026-09-19). */
-    --color-status-planned: var(--status-planned);
-    --color-status-generating: var(--status-generating);
-    --color-status-options_ready: var(--status-options_ready);
-    --color-status-in_review: var(--status-in_review);
-    --color-status-picked: var(--status-picked);
-    --color-status-approved: var(--status-approved);
-    --color-status-rework: var(--status-rework);
-    --color-status-final: var(--status-final);
-    --color-status-delivered: var(--status-delivered);
-    --color-status-killed: var(--status-killed);
+  --color-status-planned: var(--status-planned);
+  --color-status-generating: var(--status-generating);
+  --color-status-options_ready: var(--status-options_ready);
+  --color-status-in_review: var(--status-in_review);
+  --color-status-picked: var(--status-picked);
+  --color-status-approved: var(--status-approved);
+  --color-status-rework: var(--status-rework);
+  --color-status-final: var(--status-final);
+  --color-status-delivered: var(--status-delivered);
+  --color-status-killed: var(--status-killed);
 }
 
 /* Light: "production office" — warm paper, calm. A preference since v1.1
    (DECISIONS 2026-09-19); the app opens dark.
    Palette derived from kinolab.ai (warm ink #f3efe8 family + accent #ff6b2c). */
 :root {
-    color-scheme: light;
-    --background: #f7f5f0; /* warm paper */
-    --foreground: #16181d; /* brand ink-dark */
-    --card: #fffefa; /* Panel */
-    --card-foreground: #16181d;
-    --popover: #fffefa;
-    --popover-foreground: #16181d;
-    --primary: #16181d;
-    --primary-foreground: #f3efe8;
-    --secondary: #efece4;
-    --secondary-foreground: #16181d;
-    --muted: #efece4;
-    --muted-foreground: #6b6e74;
-    --accent: #efece4;
-    --accent-foreground: #16181d;
-    --destructive: #b42318;
-    --border: #e5e1d8; /* warm line */
-    --input: #e5e1d8;
-    --ring: #ff6b2c;
-    --chart-1: #2e7de1;
-    --chart-2: #7048e8;
-    --chart-3: #1f9d55;
-    --chart-4: #d97706;
-    --chart-5: #8a8f98;
-    --radius: 0.625rem; /* 10px cards; radius-sm = 6px controls */
-    --sidebar: #f2efe8;
-    --sidebar-foreground: #16181d;
-    --sidebar-primary: #16181d;
-    --sidebar-primary-foreground: #f3efe8;
-    --sidebar-accent: #e9e5db;
-    --sidebar-accent-foreground: #16181d;
-    --sidebar-border: #e5e1d8;
-    --sidebar-ring: #ff6b2c;
-    /* Brand accent (kinolab.ai): primary actions, Pick, unread markers, and
+  color-scheme: light;
+  --background: #f7f5f0; /* warm paper */
+  --foreground: #16181d; /* brand ink-dark */
+  --card: #fffefa; /* Panel */
+  --card-foreground: #16181d;
+  --popover: #fffefa;
+  --popover-foreground: #16181d;
+  --primary: #16181d;
+  --primary-foreground: #f3efe8;
+  --secondary: #efece4;
+  --secondary-foreground: #16181d;
+  --muted: #efece4;
+  --muted-foreground: #6b6e74;
+  --accent: #efece4;
+  --accent-foreground: #16181d;
+  --destructive: #b42318;
+  --border: #e5e1d8; /* warm line */
+  --input: #e5e1d8;
+  --ring: #ff6b2c;
+  --chart-1: #2e7de1;
+  --chart-2: #7048e8;
+  --chart-3: #1f9d55;
+  --chart-4: #d97706;
+  --chart-5: #8a8f98;
+  --radius: 0.625rem; /* 10px cards; radius-sm = 6px controls */
+  --sidebar: #f2efe8;
+  --sidebar-foreground: #16181d;
+  --sidebar-primary: #16181d;
+  --sidebar-primary-foreground: #f3efe8;
+  --sidebar-accent: #e9e5db;
+  --sidebar-accent-foreground: #16181d;
+  --sidebar-border: #e5e1d8;
+  --sidebar-ring: #ff6b2c;
+  /* Brand accent (kinolab.ai): primary actions, Pick, unread markers, and
        the one marker for the stage the production is in (DECISIONS
        2026-09-20). Nothing else — it only carries weight while it stays rare. */
-    --tape: #ff6b2c;
+  --tape: #ff6b2c;
 
-    /* Status hues on paper: deep enough to read as 12px pill text on their own
+  /* Status hues on paper: deep enough to read as 12px pill text on their own
        10% tint (worst case on the slate strip ≥ 4.5:1). Picked is a burnt tape
        orange here — #ff6b2c itself is 2.8:1 on paper. */
-    --status-planned: #5f646d;
-    --status-generating: #7c5e00;
-    --status-options_ready: #1f63c4;
-    --status-in_review: #6842d6;
-    --status-picked: #b63a0a;
-    --status-approved: #137236;
-    --status-rework: #a34a06;
-    --status-final: #0d6a62;
-    --status-delivered: #334155;
-    --status-killed: #991b1b;
+  --status-planned: #5f646d;
+  --status-generating: #7c5e00;
+  --status-options_ready: #1f63c4;
+  --status-in_review: #6842d6;
+  --status-picked: #b63a0a;
+  --status-approved: #137236;
+  --status-rework: #a34a06;
+  --status-final: #0d6a62;
+  --status-delivered: #334155;
+  --status-killed: #991b1b;
 }
 
 /* Dark: the kinolab.ai palette, verbatim. Default for every surface; the
    Review Room ("grading suite") is held here regardless of preference. */
 .dark {
-    color-scheme: dark;
-    --background: #0b0d11;
-    --foreground: #f3efe8;
-    --card: #12161d;
-    --card-foreground: #f3efe8;
-    --popover: #12161d;
-    --popover-foreground: #f3efe8;
-    --primary: #f3efe8;
-    --primary-foreground: #16181d;
-    --secondary: #1a1f27;
-    --secondary-foreground: #f3efe8;
-    --muted: #1a1f27;
-    --muted-foreground: #a4a8af;
-    --accent: #1a1f27;
-    --accent-foreground: #f3efe8;
-    --destructive: #ef6351;
-    --border: rgba(243, 239, 232, 0.12);
-    --input: rgba(243, 239, 232, 0.12);
-    --ring: #ff6b2c;
-    --chart-1: #2e7de1;
-    --chart-2: #7048e8;
-    --chart-3: #67c98a;
-    --chart-4: #d97706;
-    --chart-5: #8a8f98;
-    --sidebar: #101319;
-    --sidebar-foreground: #f3efe8;
-    --sidebar-primary: #f3efe8;
-    --sidebar-primary-foreground: #16181d;
-    --sidebar-accent: #1a1f27;
-    --sidebar-accent-foreground: #f3efe8;
-    --sidebar-border: rgba(243, 239, 232, 0.12);
-    --sidebar-ring: #ff6b2c;
-    --tape: #ff6b2c;
+  color-scheme: dark;
+  --background: #0b0d11;
+  --foreground: #f3efe8;
+  --card: #12161d;
+  --card-foreground: #f3efe8;
+  --popover: #12161d;
+  --popover-foreground: #f3efe8;
+  --primary: #f3efe8;
+  --primary-foreground: #16181d;
+  --secondary: #1a1f27;
+  --secondary-foreground: #f3efe8;
+  --muted: #1a1f27;
+  --muted-foreground: #a4a8af;
+  --accent: #1a1f27;
+  --accent-foreground: #f3efe8;
+  --destructive: #ef6351;
+  --border: rgba(243, 239, 232, 0.12);
+  --input: rgba(243, 239, 232, 0.12);
+  --ring: #ff6b2c;
+  --chart-1: #2e7de1;
+  --chart-2: #7048e8;
+  --chart-3: #67c98a;
+  --chart-4: #d97706;
+  --chart-5: #8a8f98;
+  --sidebar: #101319;
+  --sidebar-foreground: #f3efe8;
+  --sidebar-primary: #f3efe8;
+  --sidebar-primary-foreground: #16181d;
+  --sidebar-accent: #1a1f27;
+  --sidebar-accent-foreground: #f3efe8;
+  --sidebar-border: rgba(243, 239, 232, 0.12);
+  --sidebar-ring: #ff6b2c;
+  --tape: #ff6b2c;
 
-    /* Status hues on ink: lifted and slightly desaturated so they sit in the
+  /* Status hues on ink: lifted and slightly desaturated so they sit in the
        card rather than glow; picked is the real tape orange (6.4:1 here). */
-    --status-planned: #9ea3ab;
-    --status-generating: #e3b53d;
-    --status-options_ready: #5b9dff;
-    --status-in_review: #a78bfa;
-    --status-picked: #ff6b2c;
-    --status-approved: #4cc47a;
-    --status-rework: #f59e0b;
-    --status-final: #2fc4b2;
-    --status-delivered: #93a5c8;
-    --status-killed: #f0716a;
+  --status-planned: #9ea3ab;
+  --status-generating: #e3b53d;
+  --status-options_ready: #5b9dff;
+  --status-in_review: #a78bfa;
+  --status-picked: #ff6b2c;
+  --status-approved: #4cc47a;
+  --status-rework: #f59e0b;
+  --status-final: #2fc4b2;
+  --status-delivered: #93a5c8;
+  --status-killed: #f0716a;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
+  }
   body {
     @apply bg-background text-foreground;
-    }
+  }
   html {
     @apply font-sans;
-    }
+  }
 
   /* Reduced motion: keep every animation and transition effectively instant
      (0.01ms still fires animationend/transitionend, so Base UI popups that wait
@@ -294,9 +360,18 @@
    * first appears, never on anything being colour-judged.
    */
   @keyframes gate-weave {
-    0% { transform: translateY(6px) scale(0.985); opacity: 0; }
-    60% { transform: translateY(-1px) scale(1.002); opacity: 1; }
-    100% { transform: translateY(0) scale(1); opacity: 1; }
+    0% {
+      transform: translateY(6px) scale(0.985);
+      opacity: 0;
+    }
+    60% {
+      transform: translateY(-1px) scale(1.002);
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
   }
   .gate-weave {
     animation: gate-weave 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
@@ -304,8 +379,12 @@
 
   /** A single sweep of light across a surface — used by the leader countdown. */
   @keyframes leader-sweep {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
   .leader-sweep {
     animation: leader-sweep 1.6s linear infinite;
@@ -321,10 +400,18 @@
 
   /* One orchestrated moment: the "clap" on Pick (spec §9.2). */
   @keyframes slate-clap {
-    0% { transform: scaleY(1); }
-    35% { transform: scaleY(0.62); }
-    70% { transform: scaleY(1.06); }
-    100% { transform: scaleY(1); }
+    0% {
+      transform: scaleY(1);
+    }
+    35% {
+      transform: scaleY(0.62);
+    }
+    70% {
+      transform: scaleY(1.06);
+    }
+    100% {
+      transform: scaleY(1);
+    }
   }
   .slate-clap {
     animation: slate-clap 260ms ease-out;
@@ -346,13 +433,24 @@
     animation: clap-flash 420ms ease-out;
   }
   @keyframes clap-flash {
-    from { opacity: 0.9; transform: translateX(-60%); }
-    to { opacity: 0; transform: translateX(60%); }
+    from {
+      opacity: 0.9;
+      transform: translateX(-60%);
+    }
+    to {
+      opacity: 0;
+      transform: translateX(60%);
+    }
   }
   @media (prefers-reduced-motion: reduce) {
-    .slate-clap::after { animation: none; content: none; }
+    .slate-clap::after {
+      animation: none;
+      content: none;
+    }
   }
   @media (prefers-reduced-motion: reduce) {
-    .slate-clap { animation: none; }
+    .slate-clap {
+      animation: none;
+    }
   }
 }

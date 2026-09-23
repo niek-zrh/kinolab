@@ -105,14 +105,20 @@ export default function ReferencesPage() {
           )
         }
       />
-      <div className="creative-banner mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border p-5">
-        <div className="flex items-center gap-3">
-          <Palette className="size-7 text-tape" />
+      <div className="editorial-banner mb-6 flex min-h-44 flex-wrap items-center justify-between gap-4 p-6">
+        <img
+          src="/brand/creative-workbench-v1.jpg"
+          alt=""
+          className="absolute inset-0 size-full object-cover"
+        />
+        <div className="absolute inset-0 bg-black/70 sm:bg-transparent sm:bg-gradient-to-r sm:from-black/90 sm:via-black/75 sm:to-black/25" />
+        <div className="relative flex max-w-xl items-center gap-4">
+          <Palette className="hidden size-8 shrink-0 text-white/75 sm:block" />
           <div>
-            <p className="font-display text-lg font-medium">
+            <p className="font-display text-2xl font-semibold text-white">
               Make the vision tangible.
             </p>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-2 max-w-md text-sm leading-relaxed text-white/75">
               From the first mood to the final lighting cue. Shared with
               everyone in this production.
             </p>
@@ -120,7 +126,7 @@ export default function ReferencesPage() {
         </div>
         <Link
           href={`/p/${id}/files`}
-          className="inline-flex items-center gap-1 text-sm hover:underline"
+          className="relative inline-flex items-center gap-2 rounded-lg border border-white/30 bg-black/30 px-3 py-2 text-sm text-white hover:bg-black/50"
         >
           Open asset library <ArrowUpRight className="size-4" />
         </Link>

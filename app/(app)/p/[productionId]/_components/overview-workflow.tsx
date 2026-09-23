@@ -17,13 +17,15 @@ export function OverviewWorkflow({
       path: "my-work",
       icon: Brush,
       label: "Your next frame",
-      text: "Assignments, deadlines, and work that needs another pass.",
+      text: "Your assignments & next steps",
+      tint: "bg-status-options_ready/10 text-status-options_ready",
     },
     {
       path: "references",
       icon: Palette,
       label: "Define the look",
-      text: "Artwork, palettes, and creative direction for the whole team.",
+      text: "References, palettes & direction",
+      tint: "bg-status-in_review/10 text-status-in_review",
     },
     {
       path: "review",
@@ -31,19 +33,20 @@ export function OverviewWorkflow({
       label: counts?.reviewQueue
         ? `${counts.reviewQueue} ready for review`
         : "Meet in the Review Room",
-      text: "Compare versions, leave precise feedback, and make the pick.",
+      text: "Compare, discuss & make the pick",
+      tint: "bg-status-approved/10 text-status-approved",
     },
   ];
   return (
     <div className="mb-6 grid gap-3 lg:grid-cols-3">
-      {destinations.map(({ path, icon: Icon, label, text }) => (
+      {destinations.map(({ path, icon: Icon, label, text, tint }) => (
         <Link
           key={path}
           href={`/p/${productionId}/${path}`}
-          className="group flex items-start gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-tape/50"
+          className="studio-panel group flex items-center gap-3 p-4 transition-colors hover:border-foreground/30"
         >
-          <span className="rounded-lg bg-tape/10 p-2 text-tape">
-            <Icon className="size-4" />
+          <span className={`rounded-xl p-2.5 ${tint}`}>
+            <Icon className="size-5" />
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-medium">{label}</span>

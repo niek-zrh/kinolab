@@ -15,10 +15,13 @@ for the full illustrated guide. How to edit it: [docs/MANUAL.md](docs/MANUAL.md)
 Spec: `stravi-pilot-mega-prompt.md` · second-round brief: `docs/SPEC-v2.md` ·
 decisions log: [DECISIONS.md](DECISIONS.md) ·
 backend API contract: [docs/CONTRACTS.md](docs/CONTRACTS.md) · plan: [PLAN.md](PLAN.md).
-Current version: **1.6.0** — [release notes and deployment gates](docs/RELEASE-1.6.md).
-This release adds a scene storyboard, shared reference boards, a character
-gallery, native video review and timestamped, resolvable feedback. Existing
-production tracking, permissions and approval workflows remain available.
+Current version: **1.7.0** — [creative workspace and planned AI assistance](docs/RELEASE-1.7.md).
+This release adds an image-led production overview, grouped navigation,
+an artist workspace with assignment filters, original artwork and line icons,
+and contextual previews of six future AI assistants. **The assistants are
+planned, not connected: they do not run or send production data.**
+The storyboard, reference board, character gallery, video review, permissions,
+and approvals from [1.6](docs/RELEASE-1.6.md) remain available.
 
 ---
 

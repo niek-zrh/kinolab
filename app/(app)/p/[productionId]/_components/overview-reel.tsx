@@ -35,7 +35,7 @@ const REEL_RANK: Partial<Record<ShotStatusKey, number>> = {
   options_ready: 5,
 };
 
-const MAX = 6;
+const MAX = 4;
 
 export function OverviewReel({
   productionId,
@@ -55,7 +55,9 @@ export function OverviewReel({
   }
 
   const reel = shots
-    .filter((s) => s.coverThumbUrl !== null && REEL_RANK[s.status] !== undefined)
+    .filter(
+      (s) => s.coverThumbUrl !== null && REEL_RANK[s.status] !== undefined,
+    )
     .sort(
       (a, b) =>
         (REEL_RANK[a.status] ?? 9) - (REEL_RANK[b.status] ?? 9) ||
@@ -69,7 +71,7 @@ export function OverviewReel({
     return (
       <Link
         href={`/p/${productionId}/shots`}
-        className="creative-banner mb-6 flex min-h-48 items-center justify-center rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="creative-banner mb-6 flex min-h-28 items-center justify-center rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         No frames yet — options appear here as the production generates them.
       </Link>
@@ -78,19 +80,17 @@ export function OverviewReel({
 
   return (
     <section aria-label="Latest frames" className="mb-6">
-      <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <h2 className="font-display text-lg font-medium">
-          The film so far
-        </h2>
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h2 className="font-display text-lg font-medium">The film so far</h2>
         <Link
           href={`/p/${productionId}/storyboard`}
           className="group flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          Open storyboard
+          View all frames
           <ArrowUpRight className="size-3 transition-transform group-hover:-translate-y-0.5" />
         </Link>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {reel.map((shot) => (
           <Link
             key={shot._id}
@@ -98,7 +98,7 @@ export function OverviewReel({
             title={`${shot.code}${shot.title ? ` — ${shot.title}` : ""} · ${
               SHOT_STATUS_BY_KEY[shot.status].label
             }`}
-            className="group block overflow-hidden rounded-lg border-t-2 bg-muted ring-1 ring-foreground/10 transition-all duration-150 hover:ring-foreground/25"
+            className="group block overflow-hidden rounded-xl border-t-2 bg-muted ring-1 ring-foreground/10 transition-all duration-150 hover:ring-foreground/25"
             style={{ borderTopColor: STATUS_VAR[shot.status] } as CSSProperties}
           >
             <ShotFrame
@@ -109,9 +109,18 @@ export function OverviewReel({
               framed={false}
               className="transition-transform duration-300 group-hover:scale-[1.03]"
             />
-            <div className="flex items-start justify-between gap-3 bg-card px-3 py-2.5">
-              <div className="min-w-0"><p className="truncate text-sm font-medium">{shot.title ?? shot.code}</p><p className="mt-1 font-mono text-[10px] text-muted-foreground">{shot.code}</p></div>
-              <span className="shrink-0 text-[10px] text-muted-foreground">{SHOT_STATUS_BY_KEY[shot.status].label}</span>
+            <div className="flex flex-wrap items-start justify-between gap-2 bg-card px-3 py-2.5">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {shot.title ?? shot.code}
+                </p>
+                <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+                  {shot.code}
+                </p>
+              </div>
+              <span className="shrink-0 text-[10px] text-muted-foreground">
+                {SHOT_STATUS_BY_KEY[shot.status].label}
+              </span>
             </div>
           </Link>
         ))}

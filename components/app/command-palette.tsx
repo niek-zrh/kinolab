@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Command,
@@ -13,7 +13,18 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Clapperboard, File, Film, ListVideo } from "lucide-react";
+import {
+  BookOpen,
+  Brush,
+  Clapperboard,
+  File,
+  Film,
+  LayoutDashboard,
+  ListVideo,
+  MonitorPlay,
+  Palette,
+  Sparkles,
+} from "lucide-react";
 
 /** Global ⌘K search over shots / scenes / productions / files (spec §9.1). */
 export function CommandPalette({
@@ -26,6 +37,16 @@ export function CommandPalette({
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
   const router = useRouter();
+  const pathname = usePathname();
+  const base = pathname.match(/^\/p\/[^/]+/)?.[0];
+  const destinations = [
+    { path: "", label: "Overview", icon: LayoutDashboard },
+    { path: "/my-work", label: "My work", icon: Brush },
+    { path: "/storyboard", label: "Storyboard", icon: BookOpen },
+    { path: "/references", label: "Reference board", icon: Palette },
+    { path: "/review", label: "Review", icon: MonitorPlay },
+    { path: "/assistants", label: "AI workspace — planned", icon: Sparkles },
+  ].filter((item) => item.label.toLowerCase().includes(q.trim().toLowerCase()));
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q), 150);
@@ -52,86 +73,117 @@ export function CommandPalette({
           onValueChange={setQ}
         />
         <CommandList>
-        <CommandEmpty>
-          {debounced.length < 2 ? "Type at least two characters." : "No results."}
-        </CommandEmpty>
-        {results && results.shots.length > 0 && (
-          <CommandGroup heading="Shots">
-            {results.shots.map((s) => (
-              <CommandItem
-                key={s._id}
-                value={s._id}
-                onSelect={() => go(`/p/${s.productionId}/shots/${s._id}`)}
-              >
-                <Film className="size-4" />
-                <span className="font-mono text-xs">{s.code}</span>
-                <span className="truncate text-muted-foreground">
-                  {s.title ?? ""}
-                </span>
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {s.productionName}
-                </span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-        {results && results.scenes.length > 0 && (
-          <CommandGroup heading="Scenes">
-            {results.scenes.map((s) => (
-              <CommandItem
-                key={s._id}
-                value={s._id}
-                onSelect={() => go(`/p/${s.productionId}/shots?scene=${s._id}`)}
-              >
-                <ListVideo className="size-4" />
-                <span className="font-mono text-xs">{s.code}</span>
-                <span className="truncate text-muted-foreground">
-                  {s.title ?? ""}
-                </span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-        {results && results.productions.length > 0 && (
-          <CommandGroup heading="Productions">
-            {results.productions.map((p) => (
-              <CommandItem
-                key={p._id}
-                value={p._id}
-                onSelect={() => go(`/p/${p._id}`)}
-              >
-                <Clapperboard className="size-4" />
-                <span>{p.name}</span>
-                <span className="ml-1 font-mono text-xs text-muted-foreground">
-                  {p.code}
-                </span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-        {results && results.assets.length > 0 && (
-          <CommandGroup heading="Files">
-            {results.assets.map((a) => (
-              <CommandItem
-                key={a._id}
-                value={a._id}
-                onSelect={() =>
-                  go(
-                    a.shotId
-                      ? `/p/${a.productionId}/shots/${a.shotId}`
-                      : `/p/${a.productionId}/files`,
-                  )
-                }
-              >
-                <File className="size-4" />
-                <span className="truncate">{a.name}</span>
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {a.productionName}
-                </span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
+          {q.trim().length === 1 && (
+            <p
+              role="status"
+              className="px-4 py-3 text-xs text-muted-foreground"
+            >
+              Type at least two characters.
+            </p>
+          )}
+          {base && destinations.length > 0 && (
+            <CommandGroup heading="This production">
+              {destinations.map(({ path, label, icon: Icon }) => (
+                <CommandItem
+                  key={path}
+                  value={`navigate:${path}`}
+                  onSelect={() => go(base + path)}
+                >
+                  <Icon className="size-4" />
+                  <span>{label}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    Open workspace
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+          {q.trim().length !== 1 && (
+            <CommandEmpty>
+              {debounced.length < 2
+                ? "Type at least two characters."
+                : "No results."}
+            </CommandEmpty>
+          )}
+          {results && results.shots.length > 0 && (
+            <CommandGroup heading="Shots">
+              {results.shots.map((s) => (
+                <CommandItem
+                  key={s._id}
+                  value={s._id}
+                  onSelect={() => go(`/p/${s.productionId}/shots/${s._id}`)}
+                >
+                  <Film className="size-4" />
+                  <span className="font-mono text-xs">{s.code}</span>
+                  <span className="truncate text-muted-foreground">
+                    {s.title ?? ""}
+                  </span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {s.productionName}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+          {results && results.scenes.length > 0 && (
+            <CommandGroup heading="Scenes">
+              {results.scenes.map((s) => (
+                <CommandItem
+                  key={s._id}
+                  value={s._id}
+                  onSelect={() =>
+                    go(`/p/${s.productionId}/shots?scene=${s._id}`)
+                  }
+                >
+                  <ListVideo className="size-4" />
+                  <span className="font-mono text-xs">{s.code}</span>
+                  <span className="truncate text-muted-foreground">
+                    {s.title ?? ""}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+          {results && results.productions.length > 0 && (
+            <CommandGroup heading="Productions">
+              {results.productions.map((p) => (
+                <CommandItem
+                  key={p._id}
+                  value={p._id}
+                  onSelect={() => go(`/p/${p._id}`)}
+                >
+                  <Clapperboard className="size-4" />
+                  <span>{p.name}</span>
+                  <span className="ml-1 font-mono text-xs text-muted-foreground">
+                    {p.code}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+          {results && results.assets.length > 0 && (
+            <CommandGroup heading="Files">
+              {results.assets.map((a) => (
+                <CommandItem
+                  key={a._id}
+                  value={a._id}
+                  onSelect={() =>
+                    go(
+                      a.shotId
+                        ? `/p/${a.productionId}/shots/${a.shotId}`
+                        : `/p/${a.productionId}/files`,
+                    )
+                  }
+                >
+                  <File className="size-4" />
+                  <span className="truncate">{a.name}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {a.productionName}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
         </CommandList>
       </Command>
     </CommandDialog>

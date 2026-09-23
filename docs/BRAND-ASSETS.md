@@ -4,6 +4,8 @@ Kinolab combines code-native interface graphics with original raster artwork.
 Version 1.6 includes a generated soundstage sign-in image and optional local
 demo film stills. See [asset provenance and exact prompts](CREATIVE-ASSETS.md).
 The grain, film leader and empty frames remain code-native and follow both themes.
+Version 1.7 adds two editorial workspace images and seven original vector
+symbols. [Exact generation prompts and placement rules](WORKSPACE-ASSETS.md).
 
 But some things a model does better than a gradient. This is where those go.
 Generate them wherever you generate the film — Midjourney, Flux, Firefly,
@@ -16,6 +18,8 @@ an explicit `image` prop is not an automatic fallback.
 | File | Where it shows | Size | Falls back to |
 |---|---|---|---|
 | `public/brand/sign-in.jpg` | Behind the sign-in form (installed in 1.6) | Wide JPG | The code backdrop when no image prop is passed |
+| `public/brand/creative-workbench-v1.jpg` | Artist desk, reference banner, overview without production artwork | 1774×887 JPG | Solid charcoal surface |
+| `public/brand/assistant-frames-v1.jpg` | Planned AI workspace banner | 1774×887 JPG | Solid charcoal surface |
 | `public/brand/empty-shots.jpg` | The Shots empty state | 1600×900 | An icon in a badge |
 | `public/brand/empty-review.jpg` | The Review queue empty state | 1600×900 | An icon in a badge |
 
