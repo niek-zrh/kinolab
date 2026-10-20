@@ -79,7 +79,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
-      - traefik.http.routers.kinolab-frontend.rule=Host(`pilot.kinolab.ai`)
+      - traefik.http.routers.kinolab-frontend.rule=Host(`studio.kinolab.ai`)
       - traefik.http.routers.kinolab-frontend.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
       - traefik.http.routers.kinolab-frontend.tls=${TRAEFIK_TLS:-false}
       - traefik.http.routers.kinolab-frontend.service=kinolab-frontend-svc
