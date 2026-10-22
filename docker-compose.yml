@@ -1,5 +1,5 @@
 # Run the Kinolab Next.js frontend behind Traefik/Dokploy at
-# https://pilot.kinolab.ai, against the self-hosted Convex backend at
+# https://studio.kinolab.ai, against the self-hosted Convex backend at
 # https://api.kinolab.ai (HTTP actions: https://actions.kinolab.ai). No host ports are published; Traefik reaches the
 # container over the internal dokploy-network.
 #
@@ -18,10 +18,10 @@
 # functions, so they live on the backend: `npx convex env set …`. README
 # §"Go-live checklist" has the full list.
 #
-# Traefik entrypoint: `web` (plain HTTP) by default, which is what this
-# server's Traefik has today. Set TRAEFIK_ENTRYPOINT=websecure + TRAEFIK_TLS=1
-# once an entrypoint with a certificate exists — see README §"The Cloudflare →
-# origin hop" for the trade-off.
+# TLS: Cloudflare (proxied, SSL mode Full (strict)) -> Traefik `websecure`
+# entrypoint, which serves the Cloudflare Origin Certificate for *.kinolab.ai
+# from /etc/dokploy/traefik/dynamic/kinolab-tls.yml. HTTP -> HTTPS is handled
+# by Cloudflare's "Always Use HTTPS", so no `web` router is needed here.
 
 services:
   convex-deploy:
@@ -30,11 +30,13 @@ services:
       dockerfile: Dockerfile
       target: convex-deploy
     image: kinolab-convex-deploy
-    container_name: kinolab-convex-deploy
     # One-shot: runs `npx convex deploy` against the self-hosted backend and
     # exits. Must NOT auto-restart, or a failed push would retry forever.
     restart: "no"
     environment:
+      # Public URL by default. Alternatively set CONVEX_SELF_HOSTED_URL to
+      # http://kinolab-convex-backend:3210 to push over dokploy-network directly,
+      # skipping the round trip through Cloudflare.
       CONVEX_SELF_HOSTED_URL: ${CONVEX_SELF_HOSTED_URL:-${NEXT_PUBLIC_DEPLOYMENT_URL:-https://api.kinolab.ai}}
       # Never commit this: set it in Dokploy's Environment (or the host shell).
       CONVEX_SELF_HOSTED_ADMIN_KEY: ${CONVEX_SELF_HOSTED_ADMIN_KEY:-}
@@ -56,13 +58,13 @@ services:
         NEXT_PUBLIC_CONVEX_URL: ${NEXT_PUBLIC_CONVEX_URL:-${NEXT_PUBLIC_DEPLOYMENT_URL:-https://api.kinolab.ai}}
         # Both origins end up in the Content-Security-Policy (next.config.ts),
         # which Next bakes in at BUILD time — hence build args, not env.
+        # Make sure connect-src also allows wss://api.kinolab.ai (Convex client).
         NEXT_PUBLIC_CONVEX_SITE_URL: ${NEXT_PUBLIC_CONVEX_SITE_URL:-https://actions.kinolab.ai}
         # Comma-separated extra CSP origins; CSP_REPORT_ONLY=1 ships the policy
         # in report-only mode if something legitimate turns out to be blocked.
         CSP_EXTRA_ORIGINS: ${CSP_EXTRA_ORIGINS:-}
         CSP_REPORT_ONLY: ${CSP_REPORT_ONLY:-}
     image: kinolab-frontend
-    container_name: kinolab-frontend
     restart: unless-stopped
     environment:
       # Read at runtime by any server-rendered route.
@@ -73,21 +75,17 @@ services:
       # Hosts whose Host header may be reflected into redirect URLs. Without
       # this an attacker-supplied Host lands in the sign-in redirect Location;
       # keep it in step with the Traefik rule below (comma-separated).
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-pilot.kinolab.ai}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-studio.kinolab.ai}
     networks:
       - dokploy-network
     labels:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
       - traefik.http.routers.kinolab-frontend.rule=Host(`studio.kinolab.ai`)
-      - traefik.http.routers.kinolab-frontend.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
-      - traefik.http.routers.kinolab-frontend.tls=${TRAEFIK_TLS:-false}
+      - traefik.http.routers.kinolab-frontend.entrypoints=websecure
+      - traefik.http.routers.kinolab-frontend.tls=true
       - traefik.http.routers.kinolab-frontend.service=kinolab-frontend-svc
       - traefik.http.services.kinolab-frontend-svc.loadbalancer.server.port=8090
-      # With a websecure entrypoint that uses Let's Encrypt, ALSO add (an empty
-      # certresolver value makes Traefik drop the router, so this cannot be an
-      # env var with a blank default):
-      # - traefik.http.routers.kinolab-frontend.tls.certresolver=letsencrypt
     # HEALTHCHECK is inherited from the Dockerfile (hits /api/health on 8090).
 
 networks:
