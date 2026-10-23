@@ -80,6 +80,9 @@ export function AttachFromDrive({
       variant="outline"
       size="sm"
       disabled={busy}
+      // Google's picker lives in a docs.google.com frame and needs Google's
+      // cookies; the one error people hit is the browser blocking them.
+      title="Opens Google's file picker. If it says it can't access your Google account, sign into Google in this browser or allow third-party cookies for this site."
       onClick={async () => {
         setBusy(true);
         try {

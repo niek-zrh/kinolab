@@ -409,9 +409,8 @@ export function ReviewRoom({
               onReject={onReject}
               onPick={onPick}
               timeSeconds={
-                focused.asset?.provider === "storage" &&
-                focused.asset.mimeType?.startsWith("video/")
-                  ? (playheads[focused._id] ?? 0)
+                focused.asset?.mimeType?.startsWith("video/")
+                  ? playheads[focused._id]
                   : undefined
               }
               onSeek={(seconds) =>

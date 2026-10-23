@@ -57,6 +57,9 @@ export default defineSchema({
     expiresAt: v.number(),
     scopes: v.array(v.string()),
     revoked: v.optional(v.boolean()),
+    // The account hubs are created with unless another is chosen; absent on
+    // rows from before 1.8 → the first-connected account (lib/driveAccounts).
+    isDefault: v.optional(v.boolean()),
   }).index("by_user", ["userId"]),
 
   // Short-lived state tokens for the Drive OAuth code flow (spec §7.2).

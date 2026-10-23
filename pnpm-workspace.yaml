@@ -5,8 +5,16 @@ overrides:
   next>postcss: ^8.5.26
   # <1.2.2: event-loop DoS via next>postcss>source-map-js (patched upstream)
   source-map-js: '>=1.2.2'
+  # <1.11.0: command injection (GHSA via concurrently); patched upstream
+  shell-quote: '>=1.11.0'
   sharp: ^0.35.4
   qs: ^6.16.0
   fast-uri: ^3.1.6
   js-yaml: ^4.3.2
   hono: ^4.13.5
+
+# braces <=3.0.3 (dev-only, via shadcn>fast-glob>micromatch): the advisory names
+# a patched 3.0.4 that is not published; drop this once it is.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-vfj7-8cjw-p6xm

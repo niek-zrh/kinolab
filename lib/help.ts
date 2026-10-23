@@ -44,7 +44,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Press 1–4 to put that many options on screen. Zoom and pan are shared, so the same detail lines up across all of them.",
       "Use ← and → to move focus. S shortlists, X rejects with a reason.",
       "P picks — that is the decision, and it files the file into Approved/.",
-      "Uploaded videos play in the room. Pause on a moment and choose Attach timestamp before sending feedback. Click a comment's timestamp to seek back to it.",
+      "Videos play in the room — uploaded or living in Drive. Pause on a moment and choose Attach timestamp before sending feedback. Click a comment's timestamp to seek back to it.",
       "Resolve completed feedback or Show resolved to reopen it. Authors and content editors can resolve a comment.",
       "Edit and Delete sit under your own comments — nobody can change someone else's words. A deleted comment leaves a \"(comment deleted)\" note in History, without the text.",
     ],
@@ -106,7 +106,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Shortlist the ones worth comparing, then open the Review Room.",
       "Discussion is the shot's thread. Your own comments can be edited or deleted; everyone else's stay as written.",
     ],
-    tip: "A better take is a new version, never an edit of the old one. Versions are never renumbered.",
+    tip: "A better take is a new version, never an edit of the old one. Versions are never renumbered. If Attach from Drive says it can't access your Google account, the browser is blocking Google's cookies: sign into Google in this browser, or allow third-party cookies for this site, then try again.",
   },
   {
     route: "/p/:id/shots",

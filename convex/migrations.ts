@@ -247,3 +247,28 @@ export const markDanglingAssetsMissing = internalMutation({
     };
   },
 });
+
+/**
+ * Operator: mark a user's email as verified so a Google sign-in with that
+ * email links to the existing account instead of being refused
+ * (convex/auth.ts refuses to link a verified Google identity to an
+ * unverified password account, because the old password would stay usable).
+ * Only for people the operator can vouch for — the pilot's allow-listed
+ * testers — never on request from a stranger.
+ *   npx convex run migrations:verifyUserEmail '{"email":"someone@studio.com"}'
+ */
+export const verifyUserEmail = internalMutation({
+  args: { email: v.string() },
+  handler: async (ctx, args): Promise<string> => {
+    const email = args.email.toLowerCase().trim();
+    const matches = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", email))
+      .take(2);
+    if (matches.length === 0) return `No user with the email ${email}`;
+    if (matches.length > 1) return `Several users carry ${email} — resolve that first`;
+    if (matches[0].emailVerificationTime) return `${email} is already verified`;
+    await ctx.db.patch(matches[0]._id, { emailVerificationTime: Date.now() });
+    return `Verified ${email}: Google sign-in with this address now links to the account`;
+  },
+});

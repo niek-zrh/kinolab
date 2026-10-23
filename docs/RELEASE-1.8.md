@@ -23,6 +23,10 @@
   and asking that it is not reorganised outside Kinolab.
 - **The Drive picker browses by folder**, with This production, My Drive,
   Shared drives and Recent tabs, and opens on the production's hub.
+- **Videos that live in Drive play inside the Review Room**, streamed through
+  Kinolab — no Google tab, no Google login in the browser — with seeking and
+  timestamped notes as for uploads. A codec the browser cannot decode
+  (ProRes, HEVC) still needs an H.264 review copy.
 
 ## Operator notes
 
@@ -36,6 +40,26 @@
   hub, or expect Drive's own out-of-storage error instead of the pre-check.
 - `ALLOW_PASSWORD_SIGNUPS=1` is still set on the pilot backend for tester
   onboarding; set it to `0` once the four accounts exist.
+
+## Google sign-in
+
+"Continue with Google" is built in and switches on when `AUTH_GOOGLE_ID` /
+`AUTH_GOOGLE_SECRET` are set on the backend (same OAuth client as Drive,
+plus the `/api/auth/callback/google` redirect URI). Accounts that started
+with a password are unverified and must be vouched for once with
+`npx convex run migrations:verifyUserEmail '{"email":"…"}'` before Google
+sign-in links to them — README › Go-live checklist has the four steps.
+
+## For developers
+
+- `pnpm check` runs the full audit and had been failing on advisories in
+  dev-only packages, almost all under the `shadcn` package's transitive tree
+  (`shadcn` stays: `app/globals.css` imports its `tailwind.css`). Its
+  dependency tree was re-resolved to patched versions; `shell-quote` and
+  `source-map-js` are pinned in `pnpm-workspace.yaml` → `overrides`, and the
+  one advisory with no published fix (`braces` ≤3.0.3, dev-only) is listed
+  under `auditConfig.ignoreGhsas` with a note to drop it once 3.0.4 ships.
+  Audit is clean.
 
 ## Tests
 
@@ -61,6 +85,11 @@
    Drive, Shared drives and Recent tabs browse by folder.
 5. Review Room: edit and delete your own comment; confirm a colleague sees
    neither control on it.
+6. Review Room on a shot whose video was uploaded over 20 MB (so it lives in
+   Drive): it plays in the room, seeking works, and a timestamped note seeks
+   back to its moment. Then remove a tester from Team and confirm their
+   Review Room stops within minutes (new seeks answer 403; already-buffered
+   seconds may finish).
 
 ## Known limitations
 

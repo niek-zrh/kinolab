@@ -13,6 +13,7 @@
  *   shots-v2.mjs   v2 shots backend: import, rename, slots, scenes, links, meta
  *   elements.mjs   characters (elements.*): role matrix, slot shots, limits
  *   exports.mjs    provenance export: authz, pagination, columns, limits
+ *   media.mjs      signed in-app media route: grants, ranges, offboarding
  *   creative-workflows.mjs    references board and timed review feedback
  *   comments-and-uploads.mjs  comment edit/delete ownership, production
  *                             switcher, Drive large-upload actions
@@ -25,6 +26,7 @@ import { run as shotsV2 } from "./shots-v2.mjs";
 import { run as elements } from "./elements.mjs";
 import { run as exports } from "./exports.mjs";
 import { run as creativeWorkflows } from "./creative-workflows.mjs";
+import { run as media } from "./media.mjs";
 import { run as commentsAndUploads } from "./comments-and-uploads.mjs";
 
 const health = await fetch(`${CONVEX_URL}/version`).catch(() => null);
@@ -45,6 +47,7 @@ for (const [name, fn] of [
   ["Elements", elements],
   ["Provenance export", exports],
   ["Creative workflows", creativeWorkflows],
+  ["Media route", media],
   ["Comments, switcher & uploads", commentsAndUploads],
 ]) {
   console.log(`\n── ${name} ${"─".repeat(Math.max(0, 60 - name.length))}`);

@@ -301,7 +301,7 @@ function isAuthFailure(status: number, reasons: string[], body: string): boolean
  * `token` lets an auth failure mark the connection revoked — see
  * markTokenRevoked. Returns the error so callers `throw await driveFailure(…)`.
  */
-async function driveFailure(
+export async function driveFailure(
   context: string,
   status: number,
   body: string,

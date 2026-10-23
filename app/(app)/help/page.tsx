@@ -84,7 +84,7 @@ const SECTIONS: Section[] = [
         caption: "The Options tab",
       },
       {
-        text: "Attach from Drive opens Google's picker on this production's hub folder. Its tabs — This production, My Drive, Shared drives, Recent — browse by folder, so a file is found the way it was filed.",
+        text: "Attach from Drive opens Google's picker on this production's hub folder. Its tabs — This production, My Drive, Shared drives, Recent — browse by folder, so a file is found the way it was filed. The picker is Google's own window and needs Google's cookies: if it says it can't access your Google account, sign into Google in this browser or allow third-party cookies for this site, then try again.",
       },
       {
         text: "Each upload becomes the next version — v1, v2, v3 — and versions are never renumbered or replaced. A better take is a new version, not an edit of the old one.",
@@ -119,7 +119,7 @@ const SECTIONS: Section[] = [
         text: "S shortlists, X rejects with a reason, P picks. A pick is the decision: one version per shot, recorded with who picked it and why, and copied into the Drive Approved/ folder under its canonical name. Picking another version later supersedes the first, and both stay on the record.",
       },
       {
-        text: "Uploaded browser-compatible videos now play directly in the room. Pause the clip and attach its current timestamp to a comment. The timestamp is elapsed time in milliseconds, not SMPTE frame timecode. Click it later to seek to that moment. Resolve finished notes or show resolved notes to reopen them. Drive links still open in Drive; upload an H.264 MP4 review copy for in-app playback.",
+        text: "Uploaded browser-compatible videos now play directly in the room. Pause the clip and attach its current timestamp to a comment. The timestamp is elapsed time in milliseconds, not SMPTE frame timecode. Click it later to seek to that moment. Resolve finished notes or show resolved notes to reopen them. Videos that live in Drive play here too — streamed through Kinolab, so nobody needs a Google login in the browser. If the browser cannot decode a codec (ProRes, HEVC), upload an H.264 MP4 review copy.",
       },
       {
         text: "Your own comments carry Edit and Delete. An edit shows as (edited); a delete removes the comment and withdraws its mention notifications for everyone, and History keeps a note that a comment was deleted, without the text. Nobody can edit someone else's words — a producer can resolve a note, not rewrite it.",

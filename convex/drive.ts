@@ -15,6 +15,7 @@ import {
   assertCanForProduction,
   assertMemberForProduction,
   requireUserId,
+  getMembership,
   roleHas,
 } from "./lib/permissions";
 import { actorName, logActivity } from "./lib/activity";
@@ -25,6 +26,11 @@ import {
   HUB_FOLDERS,
 } from "./lib/domain";
 import { HUB_README_NAME, hubReadmeHtml } from "./lib/hubReadme";
+import {
+  MEDIA_GRANT_TTL_MS,
+  playableMime,
+  signMediaGrant,
+} from "./lib/mediaToken";
 import { createVersionWithAssetHelper } from "./versions";
 import {
   aboutUser,
@@ -47,6 +53,7 @@ import {
   permissionCreate,
   qEscape,
   redirectUri,
+  SITE_URL_ERROR,
   startResumableUpload,
 } from "./lib/google";
 import type { DriveFile } from "./lib/google";
@@ -739,6 +746,53 @@ export const finishLargeUpload = action({
       ownerConnectionId: info.hub.connectionId,
       ...(args.promptMeta !== undefined ? { promptMeta: args.promptMeta } : {}),
     });
+  },
+});
+
+/**
+ * Where the browser plays or shows a file. Convex-storage files get their
+ * storage URL; links are returned as they are; a file that lives in Drive
+ * gets a signed, two-hour link to the in-app media route (drive_http.ts),
+ * which relays it with the hub owner's token — nobody needs a Google login
+ * in the browser, and timestamped review notes keep working. `proxy` forces
+ * the route for storage files too (tests, debugging).
+ */
+export const mediaUrl = action({
+  args: { assetId: v.id("assets"), proxy: v.optional(v.boolean()) },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ url: string; expiresAt: number | null }> => {
+    const grant = await ctx.runQuery(internal.drive.mediaGrant, {
+      assetId: args.assetId,
+    });
+    if (grant.provider === "url") {
+      if (grant.url === null) throw new ConvexError("This link has no address");
+      return { url: grant.url, expiresAt: null };
+    }
+    if (grant.provider === "storage" && args.proxy !== true) {
+      const url =
+        grant.storageId !== null ? await ctx.storage.getUrl(grant.storageId) : null;
+      if (url === null) {
+        throw new ConvexError("This file's bytes are gone — re-upload it");
+      }
+      return { url, expiresAt: null };
+    }
+    if (!playableMime(grant.mimeType)) {
+      throw new ConvexError(
+        "Kinolab plays images, video and audio in the app — open this file in Drive",
+      );
+    }
+    const siteUrl = process.env.CONVEX_SITE_URL;
+    if (!siteUrl) throw new ConvexError(SITE_URL_ERROR);
+    const expiresAt = Date.now() + MEDIA_GRANT_TTL_MS;
+    const token = await signMediaGrant({
+      v: 1,
+      a: args.assetId,
+      u: grant.userId,
+      e: expiresAt,
+    });
+    return { url: `${siteUrl}/drive/media?t=${token}`, expiresAt };
   },
 });
 
@@ -1965,6 +2019,55 @@ export const setHub = internalMutation({
       summary: `${await actorName(ctx, args.actorId)} created the Drive hub "${args.rootName}" (${Object.keys(args.hub.folderIds).length + 1} folders)`,
     });
     return null;
+  },
+});
+
+/** Membership check for mediaUrl, on the caller's own auth. */
+export const mediaGrant = internalQuery({
+  args: { assetId: v.id("assets") },
+  handler: async (ctx, args) => {
+    const asset = await ctx.db.get(args.assetId);
+    if (asset === null) throw new ConvexError("File not found");
+    const { userId } = await assertMemberForProduction(ctx, asset.productionId);
+    return {
+      userId,
+      provider: asset.provider,
+      mimeType: asset.mimeType,
+      storageId: asset.storageId ?? null,
+      url: asset.url ?? null,
+    };
+  },
+});
+
+/**
+ * What the media route needs for one request. The route is unauthenticated
+ * (a <video> request carries no token), so the viewer comes from the signed
+ * grant and is re-checked against the studio here, on every range request —
+ * an offboarded member's links stop working at once. Ids arrive as strings
+ * from the token; garbage normalises to null rather than throwing.
+ */
+export const mediaContext = internalQuery({
+  args: { assetId: v.string(), userId: v.string() },
+  handler: async (ctx, args) => {
+    const assetId = ctx.db.normalizeId("assets", args.assetId);
+    const userId = ctx.db.normalizeId("users", args.userId);
+    if (assetId === null || userId === null) return null;
+    const asset = await ctx.db.get(assetId);
+    if (asset === null) return null;
+    const production = await ctx.db.get(asset.productionId);
+    if (production === null) return null;
+    if ((await getMembership(ctx, production.studioId, userId)) === null) {
+      return null;
+    }
+    return {
+      provider: asset.provider,
+      mimeType: asset.mimeType,
+      name: asset.name,
+      sizeBytes: asset.sizeBytes,
+      storageId: asset.storageId ?? null,
+      driveFileId: asset.driveFileId ?? null,
+      ownerConnectionId: asset.ownerConnectionId ?? null,
+    };
   },
 });
 

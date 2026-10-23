@@ -481,6 +481,16 @@ Convex storage; full files never pass through the app.
   the shot's `Options/` folder; the 5-minute sync imports it as a loose file
   (Files › unassigned). Dropping it again registers the same Drive file
   rather than uploading twice.
+- **"Can't access your Google Account" in the picker.** Attach from Drive
+  and "Pick a folder…" open Google's own picker in a docs.google.com frame,
+  which needs the user's Google session cookie in a third-party context.
+  Browsers that block third-party cookies (Chrome with "Block third-party
+  cookies", Incognito, Safari, Brave) show Google's "We can't access this
+  content right now" page. Fix on the user's side: sign into Google in that
+  browser profile, or allow third-party cookies for `studio.kinolab.ai`
+  (Chrome: Settings › Privacy › Third-party cookies › "Allowed to use
+  third-party cookies"). Nothing in Kinolab can bypass this; the hint is in
+  the help drawer and on the button.
 - **The folder guide.** Every new hub gets a Google Doc "READ ME — Kinolab
   folder structure" at its root. Hubs created before 1.8 get it with
   (pilot CLI env, see above):
@@ -747,6 +757,26 @@ none of it has a safe default that guesses right.
    existing accounts cannot claim new remote invites by default.
    `ALLOW_PASSWORD_SIGNUPS=1` is an explicit,
    insecure opt-in, not the recommended production configuration.
+
+   **Turning on Google sign-in for a pilot that started on passwords**
+   (studio.kinolab.ai, October 2026):
+
+   1. On the GCP OAuth client used for Drive, add the sign-in redirect URI
+      `https://actions.kinolab.ai/api/auth/callback/google` (the Drive one,
+      `…/google/drive/callback`, stays).
+   2. Pilot CLI env, same client id/secret as Drive:
+      `npx convex env set AUTH_GOOGLE_ID <client id>` and
+      `npx convex env set AUTH_GOOGLE_SECRET <client secret>`. "Continue
+      with Google" appears on the sign-in page at once.
+   3. Every account that was created with a password is *unverified*, and a
+      Google sign-in refuses to link to an unverified account (the old
+      password would stay usable). For each tester you can vouch for:
+      `npx convex run migrations:verifyUserEmail '{"email":"name@studio.com"}'`.
+      From then on "Continue with Google" with that address lands in their
+      existing account; their password keeps working too.
+   4. `npx convex env set ALLOW_PASSWORD_SIGNUPS 0` — new people join with
+      Google (the invite attaches to the verified address), existing
+      password sign-ins are unaffected.
 
 2. **Onboard the studio by invite.** Owner (an allowlisted, verified Google
    email) signs in first, then Team → invite each person with their role.
