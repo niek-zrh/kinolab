@@ -46,6 +46,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "P picks — that is the decision, and it files the file into Approved/.",
       "Uploaded videos play in the room. Pause on a moment and choose Attach timestamp before sending feedback. Click a comment's timestamp to seek back to it.",
       "Resolve completed feedback or Show resolved to reopen it. Authors and content editors can resolve a comment.",
+      "Edit and Delete sit under your own comments — nobody can change someone else's words. A deleted comment leaves a \"(comment deleted)\" note in History, without the text.",
     ],
     tip: "Past about 175% you are looking at the cached preview, not the original. Use the link in the zoom box before judging fine detail.",
   },
@@ -99,9 +100,11 @@ export const HELP_TOPICS: HelpTopic[] = [
     title: "A shot",
     purpose: "Everything for one shot: its options, the talk, the files, the history.",
     steps: [
-      "Options is where you work. Drop files on the uploader, or press ⌘V to paste an image straight in.",
+      "Options is where you work. Drop files on the uploader, or press ⌘V to paste an image straight in. Up to 20 MB goes into Kinolab; bigger files stream straight into the production's Drive hub with a progress counter, after a check that the Drive has room.",
+      "Attach from Drive opens Google's picker on this production's hub folder — switch to My Drive, Shared drives or Recent and click into folders.",
       "Fill in the generation details — tool, model, seed, prompt. That is what makes a result repeatable later.",
       "Shortlist the ones worth comparing, then open the Review Room.",
+      "Discussion is the shot's thread. Your own comments can be edited or deleted; everyone else's stay as written.",
     ],
     tip: "A better take is a new version, never an edit of the old one. Versions are never renumbered.",
   },
@@ -180,6 +183,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     steps: [
       "Appearance is personal to you and this device.",
       "Stages, gate approvers, links and the Drive hub are production-wide.",
+      "Connecting the Drive hub builds the folder tree in Drive and leaves a READ ME guide at the top. Keep that structure as Kinolab made it — renaming or moving folders in Drive breaks the links to shots.",
     ],
   },
   {
@@ -191,6 +195,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Each stage in the pipeline shows its shot count, its progress and its gate.",
       "Click a stage to see just its shots.",
     ],
+    tip: "Switch productions from the selector in the top bar, next to the studio name — it keeps the screen you are on.",
   },
   {
     route: "/team",
@@ -205,7 +210,11 @@ export const HELP_TOPICS: HelpTopic[] = [
     route: "/",
     title: "Productions",
     purpose: "Every production in this studio.",
-    steps: ["Open one to get its overview.", "Producers and owners can start a new one."],
+    steps: [
+      "Open one to get its overview.",
+      "Or switch from the top bar: the selector next to the studio name lists every production and keeps the screen you are on.",
+      "Producers and owners can start a new one.",
+    ],
   },
 ];
 
@@ -268,7 +277,7 @@ export const JOURNEY: JourneyStep[] = [
     n: 1,
     title: "Start the production",
     who: "Producer",
-    body: "New production, give it a name and a code. Skip the Drive step if the studio hub is not connected yet — it can be added later without redoing anything.",
+    body: "New production, give it a name and a code. Skip the Drive step if the studio hub is not connected yet — it can be added later without redoing anything. Connecting it builds the folder tree in Drive and leaves a READ ME guide at the top; keep that structure as Kinolab made it.",
     image: "01-production-created.png",
   },
   {
@@ -304,7 +313,7 @@ export const JOURNEY: JourneyStep[] = [
     n: 6,
     title: "Generate and upload options",
     who: "Artist",
-    body: "Work in whatever tool you generate with, then upload each result to the shot as a version — drop, ⌘V paste, or browse. Fill in tool, model, seed and prompt: that is what makes a result repeatable and what the provenance export carries out at the end.",
+    body: "Work in whatever tool you generate with, then upload each result to the shot as a version — drop, ⌘V paste, or browse. Up to 20 MB goes into Kinolab; bigger files stream straight into the Drive hub with a progress counter, after a check that the Drive has room. Fill in tool, model, seed and prompt: that is what makes a result repeatable and what the provenance export carries out at the end.",
     needs: "Versions are never renumbered or replaced. A better take is a new version.",
     image: "06-options-uploaded.png",
   },
@@ -319,7 +328,7 @@ export const JOURNEY: JourneyStep[] = [
     n: 8,
     title: "Compare and pick",
     who: "Creative Director",
-    body: "In the Review Room press 1–4 to put that many options side by side under one shared zoom. S shortlists, X rejects with a reason, P picks. The pick is the decision: it is recorded with who and why, and the file is copied into Approved/ under its canonical name.",
+    body: "In the Review Room press 1–4 to put that many options side by side under one shared zoom. S shortlists, X rejects with a reason, P picks. The pick is the decision: it is recorded with who and why, and the file is copied into Approved/ under its canonical name. Feedback goes in the comments beside the options — your own can be edited or deleted.",
     needs: "Only Creative Directors, Producers, Supervisors (in their stages) and Owners can pick.",
     image: "08-review-room.png",
   },

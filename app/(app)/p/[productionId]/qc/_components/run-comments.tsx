@@ -8,6 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar } from "@/components/app/user-avatar";
+import { useStudio } from "@/components/app/studio-context";
+import {
+  CommentEditForm,
+  CommentOwnerActions,
+} from "@/components/app/comment-owner-controls";
 import { formatWhen } from "@/lib/format";
 import { showMutationError } from "./qc-shared";
 
@@ -26,6 +31,8 @@ export function RunComments({
   const addComment = useMutation(api.comments.add);
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [editingId, setEditingId] = useState<Id<"comments"> | null>(null);
+  const { viewer } = useStudio();
 
   const handleSend = async () => {
     if (!body.trim()) return;
@@ -76,9 +83,38 @@ export function RunComments({
                     {formatWhen(comment._creationTime)}
                   </span>
                 </div>
-                <p className="mt-0.5 whitespace-pre-wrap text-sm leading-snug">
-                  {comment.body}
-                </p>
+                {editingId === comment._id ? (
+                  <CommentEditForm
+                    commentId={comment._id}
+                    body={comment.body}
+                    onDone={() => setEditingId(null)}
+                    onError={showMutationError}
+                  />
+                ) : (
+                  <>
+                    <p className="mt-0.5 whitespace-pre-wrap text-sm leading-snug">
+                      {comment.body}
+                      {comment.editedAt !== undefined && (
+                        <>
+                          {" "}
+                          <span className="text-xs text-muted-foreground">
+                            (edited)
+                          </span>
+                        </>
+                      )}
+                    </p>
+                    {comment.authorId === viewer?._id && (
+                      <div className="mt-1 flex gap-3">
+                        <CommentOwnerActions
+                          commentId={comment._id}
+                          body={comment.body}
+                          onEdit={() => setEditingId(comment._id)}
+                          onError={showMutationError}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </li>
           ))}

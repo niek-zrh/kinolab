@@ -26,6 +26,7 @@ import type * as lib_activity from "../lib/activity.js";
 import type * as lib_authPolicy from "../lib/authPolicy.js";
 import type * as lib_domain from "../lib/domain.js";
 import type * as lib_google from "../lib/google.js";
+import type * as lib_hubReadme from "../lib/hubReadme.js";
 import type * as lib_notify from "../lib/notify.js";
 import type * as lib_permissions from "../lib/permissions.js";
 import type * as migrations from "../migrations.js";
@@ -67,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   "lib/authPolicy": typeof lib_authPolicy;
   "lib/domain": typeof lib_domain;
   "lib/google": typeof lib_google;
+  "lib/hubReadme": typeof lib_hubReadme;
   "lib/notify": typeof lib_notify;
   "lib/permissions": typeof lib_permissions;
   migrations: typeof migrations;

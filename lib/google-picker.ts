@@ -18,6 +18,7 @@ type PickerNamespace = {
   PickerBuilder: new () => PickerBuilder;
   DocsView: new (viewId?: unknown) => DocsView;
   ViewId: { DOCS: unknown; FOLDERS: unknown };
+  DocsViewMode: { GRID: unknown; LIST: unknown };
   Feature: { MULTISELECT_ENABLED: unknown; SUPPORT_DRIVES: unknown };
   Action: { PICKED: string; CANCEL: string };
   Response: { ACTION: string; DOCUMENTS: string };
@@ -30,6 +31,7 @@ interface PickerBuilder {
   setDeveloperKey(key: string): PickerBuilder;
   setAppId(appId: string): PickerBuilder;
   enableFeature(feature: unknown): PickerBuilder;
+  setTitle(title: string): PickerBuilder;
   setCallback(cb: (data: Record<string, unknown>) => void): PickerBuilder;
   build(): { setVisible(visible: boolean): void };
 }
@@ -38,6 +40,10 @@ interface DocsView {
   setIncludeFolders(include: boolean): DocsView;
   setSelectFolderEnabled(enabled: boolean): DocsView;
   setMimeTypes(types: string): DocsView;
+  setParent(folderId: string): DocsView;
+  setEnableDrives(enabled: boolean): DocsView;
+  setMode(mode: unknown): DocsView;
+  setLabel(label: string): DocsView;
 }
 
 declare global {
@@ -134,16 +140,22 @@ function loadPickerApi(): Promise<PickerNamespace> {
   return attempt;
 }
 
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+
 /**
  * Opens the Picker; resolves with picked files, or null when cancelled.
  * foldersOnly=true switches to folder-select mode (used to choose the Hub
  * parent). Multi-select is on for files, off for folders.
+ *
+ * Tabs browse like Drive itself — folders you click into with a breadcrumb —
+ * instead of the Picker's default flat list of every file: the production's
+ * hub (startFolderId, when given), My Drive, Shared drives, Recent.
  * Rejects with a user-readable message when Google can't be loaded — callers
  * surface it as a toast and stay clickable.
  */
 export async function openDrivePicker(
   config: PickerConfig,
-  opts: { foldersOnly?: boolean } = {},
+  opts: { foldersOnly?: boolean; startFolderId?: string } = {},
 ): Promise<PickedFile[] | null> {
   const picker = await loadPickerApi();
   return new Promise((resolve, reject) => {
@@ -154,16 +166,35 @@ export async function openDrivePicker(
       settled = true;
       resolve(result);
     };
-    const view = new picker.DocsView(
-      opts.foldersOnly ? picker.ViewId.FOLDERS : picker.ViewId.DOCS,
-    );
-    if (opts.foldersOnly) {
-      view.setIncludeFolders(true);
-      view.setSelectFolderEnabled(true);
-      view.setMimeTypes("application/vnd.google-apps.folder");
+    const makeView = (label: string) => {
+      const view = new picker.DocsView(picker.ViewId.DOCS)
+        .setIncludeFolders(true)
+        .setMode(picker.DocsViewMode.LIST)
+        .setLabel(label);
+      if (opts.foldersOnly) {
+        view.setSelectFolderEnabled(true).setMimeTypes(FOLDER_MIME);
+      }
+      return view;
+    };
+    const views: DocsView[] = [];
+    if (opts.startFolderId !== undefined) {
+      views.push(makeView("This production").setParent(opts.startFolderId));
     }
-    let builder = new picker.PickerBuilder()
-      .addView(view)
+    views.push(makeView("My Drive").setParent("root"));
+    views.push(makeView("Shared drives").setEnableDrives(true));
+    // No parent = everything, newest first: a "Recent" list. Folders would
+    // only crowd it, except when a folder is what's being picked.
+    const recent = opts.foldersOnly
+      ? makeView("Recent")
+      : new picker.DocsView(picker.ViewId.DOCS)
+          .setMode(picker.DocsViewMode.LIST)
+          .setLabel("Recent");
+    views.push(recent);
+
+    let builder = new picker.PickerBuilder();
+    for (const view of views) builder = builder.addView(view);
+    builder = builder
+      .setTitle(opts.foldersOnly ? "Choose a folder" : "Choose files")
       .setOAuthToken(config.accessToken)
       .setAppId(config.appId)
       .enableFeature(picker.Feature.SUPPORT_DRIVES)

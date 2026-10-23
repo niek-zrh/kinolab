@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useMutation } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
@@ -16,10 +17,169 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { copy } from "@/lib/copy";
 
-const MAX_BYTES = 20 * 1024 * 1024; // 20MB — bigger files go via Drive
-const TOO_BIG =
-  "Upload files over 20 MB to Drive, then use Attach from Drive to bring them into Kinolab.";
+// Up to 20MB goes through Convex storage; bigger files go straight from the
+// browser to the Drive hub (drive.beginLargeUpload). Mirrors
+// DIRECT_UPLOAD_MIN_BYTES in convex/drive.ts.
+const MAX_BYTES = 20 * 1024 * 1024;
+const NEEDS_HUB =
+  "Files over 20 MB are stored in Google Drive — an owner or producer needs to set up the Drive hub in Settings first.";
+
+/** Drive's resumable protocol wants chunks in multiples of 256 KiB. */
+const CHUNK_BYTES = 32 * 1024 * 1024;
+/** Dropped connections per upload before giving up; each one resumes, not restarts. */
+const CHUNK_RETRIES = 3;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Translate Google's error body on the direct PUT. Mirrors driveFailure in
+ * convex/lib/google.ts, which only sees requests Convex makes — here the
+ * browser talks to Drive itself, and a shared drive's pooled quota is never
+ * pre-checked, so storageQuotaExceeded can still arrive at the very end.
+ */
+function describeDriveUploadError(status: number, body: string): string {
+  let reasons: string[] = [];
+  let message = "";
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { message?: string; errors?: { reason?: string }[] };
+    };
+    reasons = (parsed.error?.errors ?? []).map((e) => e.reason ?? "");
+    message = parsed.error?.message ?? "";
+  } catch {
+    // Not JSON — the status alone has to do.
+  }
+  if (reasons.includes("storageQuotaExceeded")) {
+    return "The Google Drive behind this production's hub is out of storage — extend its storage first, then upload again.";
+  }
+  if (status === 401 || status === 403) {
+    return "Google Drive refused the upload — reconnect the Drive hub in Settings and try again.";
+  }
+  if (status === 404 || status === 410) {
+    return "The Drive upload session expired — drop the file again.";
+  }
+  return `Google Drive refused the upload (${status})${message ? `: ${message}` : ""}`;
+}
+
+type ChunkOutcome =
+  | { kind: "done"; id: string }
+  | { kind: "more"; next: number }
+  | { kind: "retry"; detail: string }
+  | { kind: "fail"; detail: string };
+
+/** Byte after the last one Drive confirmed, from a 308's Range header. */
+function nextByteFrom(range: string | null, fallback: number): number {
+  const last = range ? Number(/-(\d+)$/.exec(range)?.[1]) : NaN;
+  return Number.isFinite(last) ? last + 1 : fallback;
+}
+
+function readOutcome(xhr: XMLHttpRequest, chunkEnd: number): ChunkOutcome {
+  if (xhr.status === 200 || xhr.status === 201) {
+    try {
+      const { id } = JSON.parse(xhr.responseText) as { id?: string };
+      if (id) return { kind: "done", id };
+    } catch {
+      // handled below
+    }
+    return { kind: "retry", detail: "Google Drive did not return the new file" };
+  }
+  if (xhr.status === 308) {
+    // No readable Range header = this chunk landed whole.
+    return {
+      kind: "more",
+      next: nextByteFrom(xhr.getResponseHeader("Range"), chunkEnd + 1),
+    };
+  }
+  if (xhr.status >= 500 || xhr.status === 0) {
+    return { kind: "retry", detail: `Google Drive answered ${xhr.status || "nothing"}` };
+  }
+  return { kind: "fail", detail: describeDriveUploadError(xhr.status, xhr.responseText) };
+}
+
+function sendChunk(
+  uploadUrl: string,
+  file: File,
+  start: number,
+  onLoaded: (bytes: number) => void,
+): Promise<ChunkOutcome> {
+  const end = Math.min(start + CHUNK_BYTES, file.size) - 1;
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadUrl);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.setRequestHeader("Content-Range", `bytes ${start}-${end}/${file.size}`);
+    xhr.upload.onprogress = (e) => onLoaded(start + e.loaded);
+    xhr.onload = () => resolve(readOutcome(xhr, end));
+    xhr.onerror = () =>
+      resolve({
+        kind: "retry",
+        detail: "Couldn't reach Google Drive — check the connection and try again",
+      });
+    xhr.send(file.slice(start, end + 1));
+  });
+}
+
+/** Ask Drive how much of the session it holds: an empty PUT whose Content-Range is `bytes` star-slash total. */
+function queryUploadStatus(uploadUrl: string, total: number): Promise<ChunkOutcome> {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadUrl);
+    xhr.setRequestHeader("Content-Range", `bytes */${total}`);
+    // Without a readable Range header the safe answer is "start over".
+    xhr.onload = () => resolve(readOutcome(xhr, -1));
+    xhr.onerror = () => resolve({ kind: "retry", detail: "Couldn't reach Google Drive" });
+    xhr.send();
+  });
+}
+
+/**
+ * Streams a file to a Drive resumable-upload session in chunks and resolves
+ * with the new Drive file id. A dropped connection resumes from the byte
+ * Drive confirms rather than restarting a multi-GB upload from zero.
+ */
+async function putToDrive(
+  uploadUrl: string,
+  file: File,
+  onProgress: (percent: number) => void,
+): Promise<string> {
+  let start = 0;
+  let failures = 0;
+  for (;;) {
+    const outcome = await sendChunk(uploadUrl, file, start, (loaded) =>
+      onProgress(Math.min(99, Math.round((loaded / file.size) * 100))),
+    );
+    if (outcome.kind === "done") {
+      onProgress(100);
+      return outcome.id;
+    }
+    if (outcome.kind === "fail") throw new Error(outcome.detail);
+    if (outcome.kind === "more") {
+      start = outcome.next;
+      failures = 0;
+      continue;
+    }
+    failures += 1;
+    if (failures > CHUNK_RETRIES) throw new Error(outcome.detail);
+    await wait(1000 * 2 ** (failures - 1));
+    const status = await queryUploadStatus(uploadUrl, file.size);
+    if (status.kind === "done") {
+      onProgress(100);
+      return status.id;
+    }
+    if (status.kind === "fail") throw new Error(status.detail);
+    if (status.kind === "more") start = status.next;
+  }
+}
+
+/** A server-side refusal is final; a dropped connection is worth another go. */
+function isFinalError(e: unknown): boolean {
+  return (
+    e instanceof ConvexError ||
+    (e instanceof Error && /ConvexError/.test(e.message))
+  );
+}
 
 /** Convex errors can be multiline — surface only the human line. */
 function firstErrorLine(message: string): string {
@@ -156,8 +316,22 @@ async function makeVideoThumbnail(file: File): Promise<Blob | null> {
   }
 }
 
+type PromptMeta = {
+  tool?: string;
+  model?: string;
+  prompt?: string;
+  seed?: string;
+};
 type UploadState = "uploading" | "done" | "error";
-type UploadItem = { key: string; name: string; state: UploadState };
+type UploadItem = {
+  key: string;
+  name: string;
+  state: UploadState;
+  /** Set while a large file streams to Drive. */
+  progress?: number;
+  /** A large file that reached Drive but is not registered yet — retryable. */
+  pending?: { driveFileId: string; promptMeta?: PromptMeta };
+};
 
 type PromptMetaDraft = {
   tool: string;
@@ -177,6 +351,9 @@ const EMPTY_META: PromptMetaDraft = {
  * Card-sized uploader for shot options (spec F6). Accepts drag-drop, paste
  * (while mounted) and click-to-browse. Each file: generateUploadUrl → POST
  * bytes → the same pair again for a downscaled thumbnail → addFromUpload.
+ * Files over 20MB: drive.beginLargeUpload → PUT straight to Drive →
+ * thumbnail → drive.finishLargeUpload. With a hub connected, every batch is
+ * checked for Drive space first.
  * Optional prompt metadata applies to the next upload(s) until cleared.
  */
 export function UploadDropzone({
@@ -190,6 +367,27 @@ export function UploadDropzone({
 }) {
   const generateUploadUrl = useMutation(api.versions.generateUploadUrl);
   const addFromUpload = useMutation(api.versions.addFromUpload);
+  const driveStatus = useQuery(api.drive.connectionStatus, { productionId });
+  const checkUploadSpace = useAction(api.drive.checkUploadSpace);
+  const beginLargeUpload = useAction(api.drive.beginLargeUpload);
+  const finishLargeUpload = useAction(api.drive.finishLargeUpload);
+  // undefined = still loading: never tell someone there is no hub yet.
+  const hubState =
+    driveStatus === undefined
+      ? "checking"
+      : driveStatus.hub.connected !== true
+        ? "none"
+        : driveStatus.hub.revoked === true
+          ? "revoked"
+          : "ready";
+  // Why a >20 MB file cannot go to Drive right now; null while it can — or
+  // while the answer is not in yet, when the server has the final say.
+  const largeFileBlock =
+    hubState === "none"
+      ? NEEDS_HUB
+      : hubState === "revoked"
+        ? `${copy.errors.driveExpired} Reconnect the Drive hub in Settings before uploading files over 20 MB.`
+        : null;
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -203,88 +401,198 @@ export function UploadDropzone({
     setItems((prev) =>
       prev.map((item) => (item.key === key ? { ...item, state } : item)),
     );
+  const patchItem = (key: string, patch: Partial<UploadItem>) =>
+    setItems((prev) =>
+      prev.map((item) => (item.key === key ? { ...item, ...patch } : item)),
+    );
+  const settleItem = (key: string) => {
+    setItemState(key, "done");
+    setTimeout(
+      () => setItems((prev) => prev.filter((item) => item.key !== key)),
+      2500,
+    );
+  };
+  const reportError = (e: unknown) =>
+    toast.error(
+      e instanceof Error
+        ? firstErrorLine(e.message)
+        : "Something didn't work — try again",
+    );
+
+  /**
+   * Second trip through the signed-URL flow, after the original is safely
+   * stored — a thumbnail must never cost us the upload, so failures stay
+   * silent (the server falls back to the original or Drive's thumbnail).
+   */
+  async function uploadThumbnail(
+    file: File,
+  ): Promise<Id<"_storage"> | undefined> {
+    const thumb = await makeThumbnail(file);
+    if (thumb === null) return undefined;
+    try {
+      const thumbUrl = await generateUploadUrl({ productionId });
+      const thumbRes = await fetch(thumbUrl, {
+        method: "POST",
+        headers: { "Content-Type": thumb.type },
+        body: thumb,
+      });
+      if (!thumbRes.ok) return undefined;
+      return ((await thumbRes.json()) as { storageId: Id<"_storage"> })
+        .storageId;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Registers a Drive file as the shot's next option. Retried on dropped
+   * connections only — a refusal ("not in this shot's Options folder") is
+   * final. The server side is idempotent, so a retry after a timeout is safe.
+   */
+  async function registerLarge(args: {
+    driveFileId: string;
+    promptMeta?: PromptMeta;
+    thumbStorageId?: Id<"_storage">;
+  }) {
+    const delays = [1000, 3000, 8000];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await finishLargeUpload({ shotId, ...args });
+      } catch (e) {
+        if (isFinalError(e) || attempt >= delays.length) throw e;
+        await wait(delays[attempt] ?? 8000);
+      }
+    }
+  }
+
+  /** Register first, thumbnail second: a thumbnail must never cost the version. */
+  async function finishLarge(
+    key: string,
+    file: File | null,
+    pending: NonNullable<UploadItem["pending"]>,
+  ) {
+    await registerLarge(pending);
+    patchItem(key, { pending: undefined });
+    if (file === null) return;
+    try {
+      const thumbStorageId = await uploadThumbnail(file);
+      if (thumbStorageId !== undefined) {
+        await finishLargeUpload({
+          shotId,
+          driveFileId: pending.driveFileId,
+          thumbStorageId,
+        });
+      }
+    } catch {
+      // Drive's own thumbnail, or the next sync pass, fills it in.
+    }
+  }
+
+  /** The file is in Drive; only the registration failed. Try that again. */
+  async function retryPending(item: UploadItem) {
+    if (!item.pending) return;
+    setItemState(item.key, "uploading");
+    try {
+      await finishLarge(item.key, null, item.pending);
+      settleItem(item.key);
+    } catch (e) {
+      setItemState(item.key, "error");
+      reportError(e);
+    }
+  }
 
   async function uploadFiles(fileList: FileList | File[]) {
-    const files = Array.from(fileList);
-    for (const file of files) {
+    const files: File[] = [];
+    for (const file of Array.from(fileList)) {
       const isMedia =
         file.type.startsWith("image/") || file.type.startsWith("video/");
       if (!isMedia) {
         toast.error(`${file.name}: only images and video become options`);
-        continue;
+      } else if (file.size > MAX_BYTES && largeFileBlock !== null) {
+        toast.error(`${file.name}: ${largeFileBlock}`);
+      } else {
+        files.push(file);
       }
-      if (file.size > MAX_BYTES) {
-        toast.error(TOO_BIG);
-        continue;
-      }
+    }
+    if (files.length === 0) return;
+    // Everything ends up in the hub (small files via mirrorUploadToHub), so a
+    // Drive that cannot hold the batch refuses it up front. The server keeps
+    // the check advisory: only a real shortfall throws.
+    try {
+      await checkUploadSpace({
+        productionId,
+        bytes: files.reduce((sum, f) => sum + f.size, 0),
+      });
+    } catch (e) {
+      toast.error(
+        e instanceof Error
+          ? firstErrorLine(e.message)
+          : "Something didn't work — try again",
+        { duration: 10000 },
+      );
+      return;
+    }
+    const promptMeta: PromptMeta | undefined = metaSet
+      ? {
+          tool: meta.tool.trim() || undefined,
+          model: meta.model.trim() || undefined,
+          prompt: meta.prompt.trim() || undefined,
+          seed: meta.seed.trim() || undefined,
+        }
+      : undefined;
+    for (const file of files) {
       const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setItems((prev) => [
         ...prev,
         { key, name: file.name, state: "uploading" },
       ]);
       try {
-        const url = await generateUploadUrl({ productionId });
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-          body: file,
-        });
-        if (!res.ok) throw new Error(`Upload failed (${res.status})`);
-        const { storageId } = (await res.json()) as {
-          storageId: Id<"_storage">;
-        };
-        // Second trip through the same signed-URL flow, after the original is
-        // safely stored — a thumbnail must never cost us the upload.
-        let thumbStorageId: Id<"_storage"> | undefined;
-        const thumb = await makeThumbnail(file);
-        if (thumb !== null) {
-          try {
-            const thumbUrl = await generateUploadUrl({ productionId });
-            const thumbRes = await fetch(thumbUrl, {
-              method: "POST",
-              headers: { "Content-Type": thumb.type },
-              body: thumb,
-            });
-            if (thumbRes.ok) {
-              ({ storageId: thumbStorageId } = (await thumbRes.json()) as {
-                storageId: Id<"_storage">;
-              });
-            }
-          } catch {
-            // Stay silent: addFromUpload falls back to the full-size storageId.
-          }
+        if (file.size > MAX_BYTES) {
+          const { uploadUrl } = await beginLargeUpload({
+            shotId,
+            name: file.name,
+            mimeType: file.type,
+            sizeBytes: file.size,
+            origin: window.location.origin,
+          });
+          patchItem(key, { progress: 0 });
+          const driveFileId = await putToDrive(uploadUrl, file, (percent) =>
+            patchItem(key, { progress: percent }),
+          );
+          const pending = { driveFileId, promptMeta };
+          patchItem(key, { pending, progress: undefined });
+          await finishLarge(key, file, pending);
+        } else {
+          await uploadSmall(file, promptMeta);
         }
-        const promptMeta = metaSet
-          ? {
-              tool: meta.tool.trim() || undefined,
-              model: meta.model.trim() || undefined,
-              prompt: meta.prompt.trim() || undefined,
-              seed: meta.seed.trim() || undefined,
-            }
-          : undefined;
-        await addFromUpload({
-          shotId,
-          storageId,
-          thumbStorageId,
-          name: file.name,
-          mimeType: file.type || undefined,
-          sizeBytes: file.size,
-          promptMeta,
-        });
-        setItemState(key, "done");
-        setTimeout(
-          () => setItems((prev) => prev.filter((item) => item.key !== key)),
-          2500,
-        );
+        settleItem(key);
       } catch (e) {
         setItemState(key, "error");
-        toast.error(
-          e instanceof Error
-            ? firstErrorLine(e.message)
-            : "Something didn't work — try again",
-        );
+        reportError(e);
       }
     }
+  }
+
+  async function uploadSmall(file: File, promptMeta: PromptMeta | undefined) {
+    const url = await generateUploadUrl({ productionId });
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+    const { storageId } = (await res.json()) as {
+      storageId: Id<"_storage">;
+    };
+    await addFromUpload({
+      shotId,
+      storageId,
+      thumbStorageId: await uploadThumbnail(file),
+      name: file.name,
+      mimeType: file.type || undefined,
+      sizeBytes: file.size,
+      promptMeta,
+    });
   }
 
   // Paste-to-add while this dropzone is mounted.
@@ -336,7 +644,13 @@ export function UploadDropzone({
         <UploadCloud className="size-6 text-muted-foreground" />
         <p className="text-sm font-medium">Drop files, paste, or browse</p>
         <p className="text-xs text-muted-foreground">
-          Images and video up to 20MB — bigger files via Drive
+          {hubState === "ready"
+            ? "Images and video — files over 20MB go straight to Google Drive"
+            : hubState === "checking"
+              ? "Images and video — checking the Drive hub…"
+              : hubState === "revoked"
+                ? "Images and video up to 20MB — reconnect the Drive hub for bigger files"
+                : "Images and video up to 20MB — bigger files need the Drive hub"}
         </p>
       </div>
       <input
@@ -371,11 +685,26 @@ export function UploadDropzone({
               <span className="truncate font-mono text-xs">{item.name}</span>
               <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
                 {item.state === "uploading"
-                  ? "Uploading…"
+                  ? item.progress !== undefined
+                    ? `To Drive ${item.progress}%`
+                    : item.pending
+                      ? "Registering…"
+                      : "Uploading…"
                   : item.state === "done"
                     ? "Added"
-                    : "Failed"}
+                    : item.pending
+                      ? "In Drive, not registered"
+                      : "Failed"}
               </span>
+              {item.state === "error" && item.pending && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => void retryPending(item)}
+                >
+                  Retry
+                </Button>
+              )}
             </li>
           ))}
         </ul>

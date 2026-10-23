@@ -4,6 +4,7 @@ import {
   newOwner,
   newProduction,
   addMember,
+  action,
   mutation,
   query,
   must,
@@ -293,6 +294,159 @@ export async function run() {
     reopened.resolvedAt === undefined &&
       reopened.body === note.body &&
       reopened.timeSeconds === 1.25,
+  );
+
+  // Edit / delete: the author's alone — an editor may resolve, not rewrite.
+  const history = async () =>
+    must(
+      await query(
+        "activity:forTarget",
+        { productionId, targetType: "version", targetId: video.versionId },
+        owner.token,
+      ),
+      "history",
+    ).filter((row) => row.type === "comment.added");
+  suite.denied(
+    "an editor cannot edit someone else's comment",
+    await mutation(
+      "comments:edit",
+      { commentId, body: "Rewritten" },
+      owner.token,
+    ),
+  );
+  suite.denied(
+    "another member cannot delete someone else's comment",
+    await mutation("comments:remove", { commentId }, artist.token),
+  );
+  suite.denied(
+    "another studio cannot edit the comment",
+    await mutation("comments:edit", { commentId, body: "x" }, other.token),
+  );
+  suite.denied(
+    "an edit cannot empty the comment",
+    await mutation("comments:edit", { commentId, body: "   " }, viewer.token),
+  );
+  suite.allowed(
+    "author can edit their comment",
+    await mutation(
+      "comments:edit",
+      { commentId, body: "Hold this beat two frames longer" },
+      viewer.token,
+    ),
+  );
+  const edited = must(await comments(), "edited")[0];
+  suite.check(
+    "edit replaces the body, marks it edited and keeps the timestamp",
+    edited.body === "Hold this beat two frames longer" &&
+      edited.editedAt !== undefined &&
+      edited.timeSeconds === 1.25,
+  );
+  suite.check(
+    "history quotes the edited text, not the original",
+    (await history()).some((row) =>
+      row.summary.endsWith('"Hold this beat two frames longer"'),
+    ) &&
+      !(await history()).some((row) =>
+        row.summary.endsWith('"Hold this beat longer"'),
+      ),
+  );
+
+  const mentionId = must(
+    await mutation(
+      "comments:add",
+      {
+        productionId,
+        targetType: "version",
+        targetId: video.versionId,
+        body: "@Owner please check the grade",
+        mentions: [owner.userId],
+      },
+      viewer.token,
+    ),
+    "mention comment",
+  );
+  const mentionsFor = async () =>
+    must(await query("notifications:list", {}, owner.token), "inbox").filter(
+      (n) => n.type === "mention" && n.body?.includes("check the grade"),
+    );
+  suite.check(
+    "mention notification quotes the comment",
+    (await mentionsFor()).length === 1,
+  );
+  suite.allowed(
+    "author can delete their comment",
+    await mutation("comments:remove", { commentId: mentionId }, viewer.token),
+  );
+  suite.check(
+    "deleted comment is gone from the thread",
+    !must(await comments(), "after delete").some((c) => c._id === mentionId),
+  );
+  suite.check(
+    "deleting removes the mention notification",
+    (await mentionsFor()).length === 0,
+  );
+  suite.check(
+    "history keeps the entry but drops the deleted text",
+    (await history()).some((row) => row.summary.endsWith("(comment deleted)")) &&
+      !(await history()).some((row) => row.summary.includes("check the grade")),
+  );
+  suite.allowed(
+    "deleting twice is not an error",
+    await mutation("comments:remove", { commentId: mentionId }, viewer.token),
+  );
+
+  // Large uploads go to the Drive hub; without one they are refused up front.
+  const large = {
+    shotId,
+    name: "master.mp4",
+    mimeType: "video/mp4",
+    sizeBytes: 300 * 1024 * 1024,
+  };
+  const noHub = await action("drive:beginLargeUpload", large, artist.token);
+  suite.check(
+    "a large upload without a Drive hub is refused with directions",
+    !noHub.ok && /Drive hub/.test(noHub.error),
+    noHub.ok ? "ALLOWED" : noHub.error.slice(0, 90),
+  );
+  suite.denied(
+    "a large upload must be an image or video",
+    await action(
+      "drive:beginLargeUpload",
+      { ...large, mimeType: "application/zip" },
+      artist.token,
+    ),
+  );
+  suite.denied(
+    "a viewer cannot start a large upload",
+    await action("drive:beginLargeUpload", large, viewer.token),
+  );
+  suite.denied(
+    "another studio cannot start a large upload",
+    await action("drive:beginLargeUpload", large, other.token),
+  );
+  suite.denied(
+    "registering a Drive file without a hub is refused",
+    await action(
+      "drive:finishLargeUpload",
+      { shotId, driveFileId: "not-a-real-file" },
+      artist.token,
+    ),
+  );
+  suite.allowed(
+    "the space check passes when nothing goes to Drive yet",
+    await action(
+      "drive:checkUploadSpace",
+      { productionId, bytes: large.sizeBytes },
+      artist.token,
+    ),
+  );
+  suite.denied(
+    "a viewer cannot run the upload space check",
+    await action(
+      "drive:checkUploadSpace",
+      { productionId, bytes: 1 },
+      viewer.token,
+    ),
   );
   return suite;
 }

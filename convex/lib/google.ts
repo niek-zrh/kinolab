@@ -244,6 +244,8 @@ export type DriveFile = {
   webViewLink?: string;
   trashed?: boolean;
   thumbnailLink?: string;
+  parents?: string[];
+  driveId?: string; // set only for items that live in a shared drive
 };
 
 // ---------------------------------------------------------------------------
@@ -415,7 +417,8 @@ export async function createFolder(
       mimeType: FOLDER_MIME,
       ...(parentId !== undefined ? { parents: [parentId] } : {}),
     }),
-    { fields: "id,name,mimeType" },
+    // driveId tells the caller whether the folder landed in a shared drive.
+    { fields: "id,name,mimeType,driveId" },
   );
 }
 
@@ -449,7 +452,7 @@ export async function copyFile(
 ): Promise<DriveFile> {
   return await driveRequest<DriveFile>(
     token,
-    `/files/${fileId}/copy`,
+    `/files/${encodeURIComponent(fileId)}/copy`,
     jsonInit("POST", args),
     { fields: FILE_FIELDS },
   );
@@ -463,6 +466,8 @@ export async function multipartUpload(
     mimeType: string;
     parents: string[];
     bytes: ArrayBuffer | Uint8Array;
+    /** Type of the bytes when it differs from mimeType (Drive converts). */
+    mediaType?: string;
   },
 ): Promise<DriveFile> {
   const boundary = `slate_boundary_${crypto.randomUUID()}`;
@@ -477,7 +482,7 @@ export async function multipartUpload(
       `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
       `${metadata}\r\n` +
       `--${boundary}\r\n` +
-      `Content-Type: ${args.mimeType}\r\n\r\n`,
+      `Content-Type: ${args.mediaType ?? args.mimeType}\r\n\r\n`,
   );
   const media =
     args.bytes instanceof Uint8Array ? args.bytes : new Uint8Array(args.bytes);
@@ -508,6 +513,77 @@ export async function multipartUpload(
   return (await res.json()) as DriveFile;
 }
 
+/**
+ * Free bytes on the Drive of the account behind `token`, or null when Google
+ * reports no limit (unlimited plans; shared drives use pooled storage that a
+ * user token can't measure).
+ */
+export async function driveFreeBytes(token: string): Promise<number | null> {
+  const data = await driveRequest<{
+    storageQuota?: { limit?: string; usage?: string };
+  }>(token, "/about", undefined, { fields: "storageQuota" });
+  const limit = data.storageQuota?.limit;
+  if (limit === undefined) return null;
+  return Number(limit) - Number(data.storageQuota?.usage ?? 0);
+}
+
+/**
+ * Opens a resumable upload session and returns its URL. The browser then
+ * PUTs the bytes straight to Google, so large files never pass through
+ * Convex. The session is bound to `origin` — Google only answers that
+ * origin's cross-origin PUT — and the URL authorizes this one file only.
+ */
+export async function startResumableUpload(
+  token: string,
+  args: {
+    name: string;
+    mimeType: string;
+    parents: string[];
+    sizeBytes: number;
+    origin: string;
+  },
+): Promise<string> {
+  const url = new URL(DRIVE_UPLOAD);
+  url.searchParams.set("uploadType", "resumable");
+  url.searchParams.set("supportsAllDrives", "true");
+  url.searchParams.set("fields", FILE_FIELDS);
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json; charset=UTF-8",
+      "X-Upload-Content-Type": args.mimeType,
+      "X-Upload-Content-Length": String(args.sizeBytes),
+      Origin: args.origin,
+    },
+    body: JSON.stringify({
+      name: args.name,
+      mimeType: args.mimeType,
+      parents: args.parents,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw await driveFailure("POST /upload/files (resumable)", res.status, text, token);
+  }
+  const location = res.headers.get("Location");
+  if (!location) throw new Error("Drive did not return an upload session URL");
+  return location;
+}
+
+/** ids may come from the client (finishLargeUpload); never let one reshape the path. */
+export async function getFileMeta(
+  token: string,
+  fileId: string,
+): Promise<DriveFile> {
+  return await driveRequest<DriveFile>(
+    token,
+    `/files/${encodeURIComponent(fileId)}`,
+    undefined,
+    { fields: `${FILE_FIELDS},parents,driveId` },
+  );
+}
+
 export async function permissionCreate(
   token: string,
   fileId: string,
@@ -515,7 +591,7 @@ export async function permissionCreate(
 ): Promise<void> {
   await driveRequest<{ id?: string }>(
     token,
-    `/files/${fileId}/permissions`,
+    `/files/${encodeURIComponent(fileId)}/permissions`,
     jsonInit("POST", {
       role: args.role,
       type: "user",
@@ -531,12 +607,12 @@ export async function getFileBytes(
   fileId: string,
 ): Promise<ArrayBuffer> {
   const res = await fetch(
-    `${DRIVE_API}/files/${fileId}?alt=media&supportsAllDrives=true`,
+    `${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw await driveFailure(`GET /files/${fileId} (media)`, res.status, body, token);
+    throw await driveFailure(`GET /files/${encodeURIComponent(fileId)} (media)`, res.status, body, token);
   }
   return await res.arrayBuffer();
 }

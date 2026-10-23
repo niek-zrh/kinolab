@@ -13,6 +13,9 @@
  *   shots-v2.mjs   v2 shots backend: import, rename, slots, scenes, links, meta
  *   elements.mjs   characters (elements.*): role matrix, slot shots, limits
  *   exports.mjs    provenance export: authz, pagination, columns, limits
+ *   creative-workflows.mjs    references board and timed review feedback
+ *   comments-and-uploads.mjs  comment edit/delete ownership, production
+ *                             switcher, Drive large-upload actions
  */
 import { CONVEX_URL, report } from "./_harness.mjs";
 import { run as authz } from "./authz.mjs";
@@ -22,6 +25,7 @@ import { run as shotsV2 } from "./shots-v2.mjs";
 import { run as elements } from "./elements.mjs";
 import { run as exports } from "./exports.mjs";
 import { run as creativeWorkflows } from "./creative-workflows.mjs";
+import { run as commentsAndUploads } from "./comments-and-uploads.mjs";
 
 const health = await fetch(`${CONVEX_URL}/version`).catch(() => null);
 if (!health || !health.ok) {
@@ -41,6 +45,7 @@ for (const [name, fn] of [
   ["Elements", elements],
   ["Provenance export", exports],
   ["Creative workflows", creativeWorkflows],
+  ["Comments, switcher & uploads", commentsAndUploads],
 ]) {
   console.log(`\n── ${name} ${"─".repeat(Math.max(0, 60 - name.length))}`);
   try {

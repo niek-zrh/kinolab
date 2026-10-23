@@ -48,6 +48,9 @@ const SECTIONS: Section[] = [
       {
         text: "Kinolab opens dark. Light lives under Settings › Appearance and is remembered per device. The Review Room stays dark whatever you choose — you cannot judge colour against a bright surround.",
       },
+      {
+        text: "Two selectors sit in the top bar: the studio, then the production. Switching production keeps the screen you are on — Shots stays Shots — and All productions takes you back to the grid.",
+      },
     ],
   },
   {
@@ -76,9 +79,12 @@ const SECTIONS: Section[] = [
         caption: "Shots, as a contact sheet",
       },
       {
-        text: "Drop files on the uploader, press ⌘V to paste an image straight in, or browse. Images and video up to 20MB go into Kinolab; bigger files belong in Drive and get attached from there.",
+        text: "Drop files on the uploader, press ⌘V to paste an image straight in, or browse. Files up to 20 MB go into Kinolab; bigger ones stream straight into the production's Google Drive hub with a progress counter, so set the hub up first (Settings › Drive hub). Before anything is uploaded Kinolab checks the Drive has room and stops with a clear message when it doesn't. If the connection drops, the upload resumes where it left off; if only the final registration fails, Retry on the file finishes it without uploading again.",
         image: "08-shot-options.png",
         caption: "The Options tab",
+      },
+      {
+        text: "Attach from Drive opens Google's picker on this production's hub folder. Its tabs — This production, My Drive, Shared drives, Recent — browse by folder, so a file is found the way it was filed.",
       },
       {
         text: "Each upload becomes the next version — v1, v2, v3 — and versions are never renumbered or replaced. A better take is a new version, not an edit of the old one.",
@@ -115,6 +121,9 @@ const SECTIONS: Section[] = [
       {
         text: "Uploaded browser-compatible videos now play directly in the room. Pause the clip and attach its current timestamp to a comment. The timestamp is elapsed time in milliseconds, not SMPTE frame timecode. Click it later to seek to that moment. Resolve finished notes or show resolved notes to reopen them. Drive links still open in Drive; upload an H.264 MP4 review copy for in-app playback.",
       },
+      {
+        text: "Your own comments carry Edit and Delete. An edit shows as (edited); a delete removes the comment and withdraws its mention notifications for everyone, and History keeps a note that a comment was deleted, without the text. Nobody can edit someone else's words — a producer can resolve a note, not rewrite it.",
+      },
     ],
   },
   {
@@ -131,6 +140,9 @@ const SECTIONS: Section[] = [
         text: "Decisions is the ledger — every gate, pick and QC sign-off in order, with who and why. Nothing is ever deleted. Export it as CSV, or as a provenance file carrying every prompt, seed, file identity and decision.",
         image: "14-decisions.png",
         caption: "The Decisions ledger",
+      },
+      {
+        text: "Connecting the Drive hub (Settings › Drive hub) builds the production's folder tree in Drive — Admin, Development, Pre-Production, Previews, Production › Shots, Post, Delivery — and leaves a READ ME guide at the top. Keep that structure as Kinolab made it: renaming, moving or deleting folders in Drive breaks the links between shots and their files.",
       },
     ],
   },

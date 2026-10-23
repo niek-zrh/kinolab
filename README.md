@@ -459,6 +459,38 @@ Drive's own UI stay invisible to it — see the note in the demo script). All hu
 personal tokens only read files their owner picked. Thumbnails are cached in
 Convex storage; full files never pass through the app.
 
+### Large uploads, Drive space and the folder guide
+
+- **Files over 20 MB go from the browser straight into the production's
+  Drive hub** (`drive.beginLargeUpload` → resumable session → the browser
+  PUTs the bytes in 32 MiB chunks → `drive.finishLargeUpload`). Without a
+  connected hub they are refused with directions to Settings › Drive hub.
+  The resumable session is bound to the **origin the page is loaded from**
+  (`window.location.origin`); `SITE_URL` is the fallback and a mismatch is
+  logged, so keep `SITE_URL` equal to the frontend origin
+  (`https://studio.kinolab.ai`). The CSP already allows
+  `https://*.googleapis.com` in `connect-src`.
+- **Space is checked first.** Every upload batch asks Google for the hub
+  owner's free space (`about.storageQuota`) and refuses with "Not enough
+  space on this production's Google Drive…" when the batch does not fit.
+  The free figure is shown to owners/producers only. Shared drives are
+  pooled and cannot be measured per user, so there Drive's own
+  `storageQuotaExceeded` ends the upload instead. Google being unreachable
+  never blocks a small upload — the check is advisory for those.
+- **Orphans.** A large file whose tab was closed before registration sits in
+  the shot's `Options/` folder; the 5-minute sync imports it as a loose file
+  (Files › unassigned). Dropping it again registers the same Drive file
+  rather than uploading twice.
+- **The folder guide.** Every new hub gets a Google Doc "READ ME — Kinolab
+  folder structure" at its root. Hubs created before 1.8 get it with
+  (pilot CLI env, see above):
+
+  ```bash
+  npx convex run drive:addHubReadme '{"productionId":"<id from the URL>"}'
+  ```
+
+  The same command rewrites a guide someone trashed.
+
 ## Going to Convex cloud (shared pilot deployment)
 
 ```bash

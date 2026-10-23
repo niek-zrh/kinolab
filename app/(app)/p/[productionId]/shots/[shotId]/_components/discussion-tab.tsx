@@ -16,6 +16,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/app/empty-state";
 import { UserAvatar } from "@/components/app/user-avatar";
+import {
+  CommentEditForm,
+  CommentOwnerActions,
+} from "@/components/app/comment-owner-controls";
 import { useStudio } from "@/components/app/studio-context";
 import { formatWhen } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -63,6 +67,7 @@ export function DiscussionTab({
     targetId: shotId,
   });
   const resolve = useMutation(api.comments.resolve);
+  const [editingId, setEditingId] = useState<Id<"comments"> | null>(null);
 
   return (
     <div className="max-w-2xl space-y-5">
@@ -108,14 +113,43 @@ export function DiscussionTab({
                       <span className="text-muted-foreground">Resolved</span>
                     )}
                   </div>
-                  <p
-                    className={cn(
-                      "mt-0.5 text-sm whitespace-pre-wrap",
-                      resolved && "text-muted-foreground",
-                    )}
-                  >
-                    {renderBody(comment.body, comment.mentionUsers)}
-                  </p>
+                  {editingId === comment._id ? (
+                    <CommentEditForm
+                      commentId={comment._id}
+                      body={comment.body}
+                      onDone={() => setEditingId(null)}
+                      onError={showMutationError}
+                    />
+                  ) : (
+                    <>
+                      <p
+                        className={cn(
+                          "mt-0.5 text-sm whitespace-pre-wrap",
+                          resolved && "text-muted-foreground",
+                        )}
+                      >
+                        {renderBody(comment.body, comment.mentionUsers)}
+                        {comment.editedAt !== undefined && (
+                          <>
+                            {" "}
+                            <span className="text-xs text-muted-foreground">
+                              (edited)
+                            </span>
+                          </>
+                        )}
+                      </p>
+                      {comment.authorId === viewer?._id && (
+                        <div className="mt-1 flex gap-3">
+                          <CommentOwnerActions
+                            commentId={comment._id}
+                            body={comment.body}
+                            onEdit={() => setEditingId(comment._id)}
+                            onError={showMutationError}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
                 {canResolve && (
                   <Button

@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   assertCanForProduction,
   assertMemberForProduction,
@@ -40,6 +40,24 @@ async function userRef(
 
 function snippet(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max).trimEnd()}…`;
+}
+
+function validBody(raw: string): string {
+  const body = raw.trim();
+  if (!body) throw new ConvexError("Comment can't be empty");
+  if (body.length > 8000)
+    throw new ConvexError("Keep comments under 8,000 characters");
+  return body;
+}
+
+/** The quote that `comment.added` activity summaries end with. */
+function activityQuote(body: string): string {
+  return `"${snippet(body, 80)}"`;
+}
+
+/** Mention notifications carry the body as their own text. */
+function notificationBody(body: string): string {
+  return snippet(body, 120);
 }
 
 const FALLBACK_LABEL: Record<CommentTargetType, string> = {
@@ -189,10 +207,7 @@ export const add = mutation({
       args.productionId,
       "comment.create",
     );
-    const body = args.body.trim();
-    if (!body) throw new ConvexError("Comment can't be empty");
-    if (body.length > 8000)
-      throw new ConvexError("Keep comments under 8,000 characters");
+    const body = validBody(args.body);
     if (args.mentions.length > 50)
       throw new ConvexError("Mention at most 50 people");
     const resolved = await resolveCommentTarget(
@@ -261,8 +276,9 @@ export const add = mutation({
       productionId: args.productionId,
       type: "mention",
       title: `${name} mentioned you`,
-      body: snippet(body, 120),
+      body: notificationBody(body),
       href,
+      commentId,
     });
     await logActivity(ctx, {
       productionId: args.productionId,
@@ -272,7 +288,9 @@ export const add = mutation({
       targetId: args.targetId,
       summary: `${name} commented on ${
         resolved?.label ?? FALLBACK_LABEL[args.targetType]
-      } — "${snippet(body, 80)}"`,
+      } — ${activityQuote(body)}`,
+      // Lets comments.edit / comments.remove find this row again.
+      data: { commentId },
     });
     return commentId;
   },
@@ -305,7 +323,158 @@ export const resolve = mutation({
       type: resolved ? "comment.resolved" : "comment.reopened",
       targetType: comment.targetType,
       targetId: comment.targetId,
-      summary: `${name} ${resolved ? "resolved" : "reopened"} a comment — "${snippet(comment.body, 80)}"`,
+      summary: `${name} ${resolved ? "resolved" : "reopened"} a comment — ${activityQuote(comment.body)}`,
+      // Quotes the body, so comments.edit / comments.remove must find it too.
+      data: { commentId: comment._id },
     });
+  },
+});
+
+/**
+ * Edit and delete are the author's alone — unlike resolve, an editor can't
+ * put words in someone else's mouth. Still requires current membership.
+ */
+async function ownComment(
+  ctx: MutationCtx,
+  commentId: Id<"comments">,
+  verb: "edit" | "delete",
+): Promise<Doc<"comments"> | null> {
+  const comment = await ctx.db.get(commentId);
+  if (!comment) return null;
+  const { userId } = await assertMemberForProduction(ctx, comment.productionId);
+  if (comment.authorId !== userId) {
+    throw new PermissionError(`Only the author can ${verb} this comment`);
+  }
+  return comment;
+}
+
+/** Activity types whose summary ends with the comment's quoted text. */
+const QUOTING_TYPES = new Set([
+  "comment.added",
+  "comment.resolved",
+  "comment.reopened",
+]);
+/**
+ * Rows from before data.commentId was recorded are matched on their quote.
+ * Every row that can quote this comment was written at or after the comment
+ * itself (same transaction for comment.added), so the scan starts at the
+ * comment's own timestamp and runs oldest-first — bounded by time, not by
+ * how busy the target has been since.
+ */
+const LEGACY_ROW_SCAN = 200;
+const LEGACY_NOTIFICATION_SCAN = 50;
+
+/**
+ * Every activity row whose summary quotes this comment: data.commentId when
+ * recorded; author + quote (comment.added) or quote alone (resolved/reopened)
+ * for rows written by older builds.
+ */
+async function quotingActivityRows(
+  ctx: MutationCtx,
+  comment: Doc<"comments">,
+): Promise<Doc<"activity">[]> {
+  const rows = await ctx.db
+    .query("activity")
+    .withIndex("by_target", (q) =>
+      q
+        .eq("targetType", comment.targetType)
+        .eq("targetId", comment.targetId)
+        .gte("_creationTime", comment._creationTime),
+    )
+    .order("asc")
+    .take(LEGACY_ROW_SCAN);
+  const quote = activityQuote(comment.body);
+  return rows.filter((row) => {
+    if (!QUOTING_TYPES.has(row.type)) return false;
+    if (row.data !== undefined) {
+      try {
+        return JSON.parse(row.data).commentId === comment._id;
+      } catch {
+        return false;
+      }
+    }
+    if (!row.summary.endsWith(quote)) return false;
+    return row.type !== "comment.added" || row.actorId === comment.authorId;
+  });
+}
+
+async function rewriteActivityQuote(
+  ctx: MutationCtx,
+  comment: Doc<"comments">,
+  replacement: string,
+): Promise<void> {
+  const quote = activityQuote(comment.body);
+  for (const row of await quotingActivityRows(ctx, comment)) {
+    if (!row.summary.endsWith(quote)) continue;
+    await ctx.db.patch(row._id, {
+      summary: row.summary.slice(0, -quote.length) + replacement,
+    });
+  }
+}
+
+/**
+ * Each mentioned user's notification for this comment. Rows carry commentId
+ * since 1.8; older ones are the earliest mention row for that user at or
+ * after the comment's timestamp with the same quoted text.
+ */
+async function mentionNotifications(
+  ctx: MutationCtx,
+  comment: Doc<"comments">,
+): Promise<Doc<"notifications">[]> {
+  const linked = await ctx.db
+    .query("notifications")
+    .withIndex("by_comment", (q) => q.eq("commentId", comment._id))
+    .take(100);
+  if (linked.length > 0) return linked;
+  const quoted = notificationBody(comment.body);
+  const found: Doc<"notifications">[] = [];
+  for (const userId of comment.mentions) {
+    const rows = await ctx.db
+      .query("notifications")
+      .withIndex("by_user", (q) =>
+        q.eq("userId", userId).gte("_creationTime", comment._creationTime),
+      )
+      .order("asc")
+      .take(LEGACY_NOTIFICATION_SCAN);
+    const match = rows.find(
+      (n) =>
+        n.commentId === undefined &&
+        n.type === "mention" &&
+        n.productionId === comment.productionId &&
+        n.body === quoted,
+    );
+    if (match) found.push(match);
+  }
+  return found;
+}
+
+export const edit = mutation({
+  args: { commentId: v.id("comments"), body: v.string() },
+  handler: async (ctx, args) => {
+    const comment = await ownComment(ctx, args.commentId, "edit");
+    if (!comment) throw new ConvexError("Comment not found");
+    const body = validBody(args.body);
+    if (body === comment.body) return;
+    await rewriteActivityQuote(ctx, comment, activityQuote(body));
+    for (const n of await mentionNotifications(ctx, comment)) {
+      await ctx.db.patch(n._id, { body: notificationBody(body) });
+    }
+    await ctx.db.patch(comment._id, { body, editedAt: Date.now() });
+  },
+});
+
+export const remove = mutation({
+  args: { commentId: v.id("comments") },
+  handler: async (ctx, args) => {
+    // Deleting twice is not an error — the first call already did the work.
+    const comment = await ownComment(ctx, args.commentId, "delete");
+    if (!comment) return;
+    // The activity row stays (daily reports count comment.added); only the
+    // quoted text goes.
+    await rewriteActivityQuote(ctx, comment, "(comment deleted)");
+    for (const n of await mentionNotifications(ctx, comment)) {
+      await ctx.db.delete(n._id);
+    }
+    await ctx.db.delete(comment._id);
   },
 });

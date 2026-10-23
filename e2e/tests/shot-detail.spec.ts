@@ -283,7 +283,7 @@ test.describe.serial("shot detail", () => {
       "Add a comment — @ to mention someone",
     );
     await composer.fill("First pass looks promising");
-    await page.getByRole("button", { name: "Comment" }).click();
+    await page.getByRole("button", { name: "Comment", exact: true }).click();
     await expect(page.getByText("First pass looks promising")).toBeVisible();
     await expect(page.getByText(ownerName).first()).toBeVisible();
     await expect(composer).toHaveValue("");
@@ -314,7 +314,7 @@ test.describe.serial("shot detail", () => {
     await expect(suggestion).toBeVisible({ timeout: 15_000 });
     await suggestion.click();
     await expect(composer).toHaveValue(/@Mia Mention/);
-    await page.getByRole("button", { name: "Comment" }).click();
+    await page.getByRole("button", { name: "Comment", exact: true }).click();
     await expect(page.getByText(`@${MEMBER_NAME}`).first()).toBeVisible();
 
     // The member's bell shows an unread notification naming the author…

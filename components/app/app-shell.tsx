@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AppearanceMenuItems } from "./appearance-control";
 import { CommandPalette } from "./command-palette";
 import { FavoritesBar } from "./favorites-bar";
+import { ProductionSwitcher } from "./production-switcher";
 import { CreateStudio } from "./create-studio";
 import { HelpPanel } from "./help-panel";
 import { NotificationsBell } from "./notifications-bell";
@@ -115,6 +116,10 @@ function Shell({ children }: { children: ReactNode }) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <span aria-hidden className="text-muted-foreground/50">
+          /
+        </span>
+        <ProductionSwitcher />
 
         <FavoritesBar />
 

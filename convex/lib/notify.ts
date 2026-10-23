@@ -16,6 +16,7 @@ export async function notify(
     title: string;
     body?: string;
     href?: string;
+    commentId?: Id<"comments">; // the comment a mention quotes, so edit/remove can follow it
   },
 ): Promise<void> {
   if (args.actorId !== undefined && args.actorId === args.userId) return;
@@ -26,6 +27,7 @@ export async function notify(
     title: args.title,
     body: args.body,
     href: args.href,
+    commentId: args.commentId,
   });
 }
 

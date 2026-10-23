@@ -24,6 +24,10 @@ import {
 } from "@/components/app/generation-details-dialog";
 import { useStudio } from "@/components/app/studio-context";
 import { UserAvatar } from "@/components/app/user-avatar";
+import {
+  CommentEditForm,
+  CommentOwnerActions,
+} from "@/components/app/comment-owner-controls";
 import { formatAgo, formatWhen } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { DecisionActions } from "./decision-dialogs";
@@ -290,6 +294,8 @@ function CommentThread({
   const [sending, setSending] = useState(false);
   const [pinnedTime, setPinnedTime] = useState<number | undefined>();
   const [showResolved, setShowResolved] = useState(false);
+  const [editingId, setEditingId] = useState<Id<"comments"> | null>(null);
+  const showError = (e: unknown) => toast.error(firstErrorLine(e));
   const canEdit = [
     "owner",
     "producer",
@@ -317,7 +323,7 @@ function CommentThread({
       setBody("");
       setPinnedTime(undefined);
     } catch (e) {
-      toast.error(firstErrorLine(e));
+      showError(e);
     } finally {
       setSending(false);
     }
@@ -373,9 +379,27 @@ function CommentThread({
                     {formatAgo(c._creationTime)}
                   </span>
                 </div>
-                <p className="mt-0.5 text-sm whitespace-pre-wrap break-words">
-                  {c.body}
-                </p>
+                {editingId === c._id ? (
+                  <CommentEditForm
+                    commentId={c._id}
+                    body={c.body}
+                    submitOn="enter"
+                    onDone={() => setEditingId(null)}
+                    onError={showError}
+                  />
+                ) : (
+                  <p className="mt-0.5 text-sm whitespace-pre-wrap break-words">
+                    {c.body}
+                    {c.editedAt !== undefined && (
+                      <>
+                        {" "}
+                        <span className="text-[10px] text-muted-foreground">
+                          (edited)
+                        </span>
+                      </>
+                    )}
+                  </p>
+                )}
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   {c.timeSeconds !== undefined && (
                     <button
@@ -399,7 +423,7 @@ function CommentThread({
                         void resolveComment({
                           commentId: c._id,
                           resolved: c.resolvedAt === undefined,
-                        }).catch((e) => toast.error(firstErrorLine(e)));
+                        }).catch(showError);
                       }}
                       className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
                     >
@@ -410,6 +434,14 @@ function CommentThread({
                       )}
                       {c.resolvedAt !== undefined ? "Reopen" : "Resolve"}
                     </button>
+                  )}
+                  {c.authorId === viewer?._id && editingId !== c._id && (
+                    <CommentOwnerActions
+                      commentId={c._id}
+                      body={c.body}
+                      onEdit={() => setEditingId(c._id)}
+                      onError={showError}
+                    />
                   )}
                 </div>
               </div>

@@ -299,6 +299,29 @@ export const listForStudio = query({
   },
 });
 
+/**
+ * The top-bar production switcher: names only, so it stays cheap on every
+ * page (listForStudio counts each production's shots for the home tiles).
+ * Active first, then paused, then wrapped; by name within each.
+ */
+export const switcher = query({
+  args: { studioId: v.id("studios") },
+  handler: async (ctx, args) => {
+    await assertMember(ctx, args.studioId);
+    const productions = await ctx.db
+      .query("productions")
+      .withIndex("by_studio", (q) => q.eq("studioId", args.studioId))
+      .take(500);
+    const order = { active: 0, paused: 1, wrapped: 2 } as const;
+    return productions
+      .map(({ _id, code, name, status }) => ({ _id, code, name, status }))
+      .sort(
+        (a, b) =>
+          order[a.status] - order[b.status] || a.name.localeCompare(b.name),
+      );
+  },
+});
+
 export const get = query({
   args: { productionId: v.id("productions") },
   handler: async (ctx, args) => {

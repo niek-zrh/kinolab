@@ -3,6 +3,8 @@ allowBuilds:
   sharp: true
 overrides:
   next>postcss: ^8.5.26
+  # <1.2.2: event-loop DoS via next>postcss>source-map-js (patched upstream)
+  source-map-js: '>=1.2.2'
   sharp: ^0.35.4
   qs: ^6.16.0
   fast-uri: ^3.1.6

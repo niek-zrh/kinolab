@@ -103,6 +103,7 @@ export default defineSchema({
         folderIds: v.record(v.string(), v.string()), // logical key -> Drive folderId
         driveKind: v.union(v.literal("myDrive"), v.literal("sharedDrive")),
         sharedDriveId: v.optional(v.string()),
+        readmeFileId: v.optional(v.string()), // the guide Doc; sync skips it
       }),
     ),
   }).index("by_studio", ["studioId"]),
@@ -330,6 +331,7 @@ export default defineSchema({
     body: v.string(),
     timeSeconds: v.optional(v.number()),
     mentions: v.array(v.id("users")),
+    editedAt: v.optional(v.number()), // set by comments.edit; shown as "edited"
     resolvedBy: v.optional(v.id("users")),
     resolvedAt: v.optional(v.number()),
   })
@@ -432,7 +434,9 @@ export default defineSchema({
     body: v.optional(v.string()),
     href: v.optional(v.string()),
     readAt: v.optional(v.number()),
+    commentId: v.optional(v.id("comments")), // mention rows; lets comments.edit/remove find them
   })
     .index("by_user", ["userId"])
-    .index("by_user_unread", ["userId", "readAt"]),
+    .index("by_user_unread", ["userId", "readAt"])
+    .index("by_comment", ["commentId"]),
 });

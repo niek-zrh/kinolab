@@ -328,7 +328,7 @@ test.describe.serial("permissions", () => {
     const text = `Gallery note ${Date.now()}`;
     await viewerPage!.getByRole("tab", { name: "Discussion" }).click();
     await viewerPage!.getByPlaceholder(/Add a comment/).fill(text);
-    await viewerPage!.getByRole("button", { name: "Comment" }).click();
+    await viewerPage!.getByRole("button", { name: "Comment", exact: true }).click();
     await expect(viewerPage!.getByText(text, { exact: true })).toBeVisible();
     await expect(viewerPage!.getByText("Vera Viewer").first()).toBeVisible();
   });

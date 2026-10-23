@@ -15,6 +15,7 @@ import {
   assertCanForProduction,
   assertMemberForProduction,
   requireUserId,
+  roleHas,
 } from "./lib/permissions";
 import { actorName, logActivity } from "./lib/activity";
 import { notify } from "./lib/notify";
@@ -23,18 +24,22 @@ import {
   extensionFor,
   HUB_FOLDERS,
 } from "./lib/domain";
+import { HUB_README_NAME, hubReadmeHtml } from "./lib/hubReadme";
+import { createVersionWithAssetHelper } from "./versions";
 import {
   aboutUser,
   CONFIG_ERROR,
   CONSENT_URL,
   copyFile,
   createFolder,
+  driveFreeBytes,
   DRIVE_SCOPE,
   DriveAuthError,
   driveRequest,
   exchangeCode,
   FOLDER_MIME,
   getFileBytes,
+  getFileMeta,
   getFreshToken,
   googleEnv,
   listFiles,
@@ -42,6 +47,7 @@ import {
   permissionCreate,
   qEscape,
   redirectUri,
+  startResumableUpload,
 } from "./lib/google";
 import type { DriveFile } from "./lib/google";
 
@@ -152,6 +158,79 @@ const MAX_INLINE_THUMB_BYTES = 2 * 1024 * 1024;
 
 function megabytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
+}
+
+function humanBytes(bytes: number): string {
+  const gb = bytes / 1024 ** 3;
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : megabytes(Math.max(0, bytes));
+}
+
+/**
+ * Checked before anything is written to the hub: a full Drive must refuse
+ * the upload up front, not fail halfway with the bytes already sent. Shared
+ * drives draw on pooled storage a user token can't measure — Drive's own
+ * storageQuotaExceeded (driveFailure) still covers those.
+ */
+class DriveSpaceError extends ConvexError<string> {}
+
+async function assertDriveSpace(
+  token: string,
+  hub: HubInfo,
+  bytes: number,
+  /** The free figure is the hub owner's account quota — managers only. */
+  showFree: boolean,
+): Promise<void> {
+  if (hub.driveKind === "sharedDrive") return;
+  const free = await driveFreeBytes(token);
+  if (free === null || free >= bytes) return;
+  throw new DriveSpaceError(
+    showFree
+      ? `Not enough space on this production's Google Drive: ${humanBytes(free)} free, ` +
+          `${humanBytes(bytes)} needed. Extend the Google Drive storage of the account ` +
+          `that owns the Drive hub first, then upload again.`
+      : `Not enough space on this production's Google Drive for this upload ` +
+          `(${humanBytes(bytes)} needed) — ask an owner or producer to extend the ` +
+          `Google Drive storage of the account that owns the Drive hub.`,
+  );
+}
+
+/**
+ * Files above this go straight from the browser to Drive (beginLargeUpload);
+ * smaller ones keep the Convex-storage path. Mirrors MAX_BYTES in
+ * components/app/upload-dropzone.tsx.
+ */
+const DIRECT_UPLOAD_MIN_BYTES = 20 * 1024 * 1024;
+
+/** The origin a large upload's Drive session is bound to (see beginLargeUpload). */
+function resolveUploadOrigin(fromPage: string | undefined): string {
+  const siteOrigin = (() => {
+    try {
+      return process.env.SITE_URL ? new URL(process.env.SITE_URL).origin : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+  let pageOrigin: string | undefined;
+  if (fromPage !== undefined) {
+    try {
+      pageOrigin = new URL(fromPage).origin;
+    } catch {
+      pageOrigin = undefined;
+    }
+    if (pageOrigin !== fromPage || pageOrigin === "null") {
+      throw new ConvexError("The page origin for a large upload is not a valid origin");
+    }
+  }
+  if (pageOrigin !== undefined && siteOrigin !== undefined && pageOrigin !== siteOrigin) {
+    console.log(
+      `beginLargeUpload: page origin ${pageOrigin} differs from SITE_URL ${siteOrigin} — update SITE_URL (README §Go-live)`,
+    );
+  }
+  const origin = pageOrigin ?? siteOrigin;
+  if (origin === undefined) {
+    throw new ConvexError("SITE_URL is not set on the deployment");
+  }
+  return origin;
 }
 
 /**
@@ -384,6 +463,7 @@ export const scaffoldHub = action({
     const rootName = `${info.code} — ${info.name}`;
     const rootParent = args.parentFolderId ?? args.sharedDriveId;
     const root = await createFolder(token, rootName, rootParent);
+    const sharedDriveId = root.driveId ?? args.sharedDriveId;
 
     // Build the HUB_FOLDERS tree; parents always precede children in the list.
     const idByPath = new Map<string, string>();
@@ -398,6 +478,7 @@ export const scaffoldHub = action({
       idByPath.set(entry.path.join("/"), folder.id);
       folderIds[entry.key] = folder.id;
     }
+    const readmeFileId = await writeHubReadme(token, root.id, info);
 
     await ctx.runMutation(internal.drive.setHub, {
       productionId: args.productionId,
@@ -407,10 +488,12 @@ export const scaffoldHub = action({
         connectionId: info.connectionId,
         rootFolderId: root.id,
         folderIds,
-        driveKind: args.sharedDriveId !== undefined ? "sharedDrive" : "myDrive",
-        ...(args.sharedDriveId !== undefined
-          ? { sharedDriveId: args.sharedDriveId }
-          : {}),
+        // Drive, not the caller, decides where the root lives: "Pick a
+        // folder…" sends a shared-drive folder as parentFolderId too, and a
+        // hub in pooled storage must skip the personal-quota check.
+        driveKind: sharedDriveId !== undefined ? "sharedDrive" : "myDrive",
+        ...(sharedDriveId !== undefined ? { sharedDriveId } : {}),
+        ...(readmeFileId !== undefined ? { readmeFileId } : {}),
       },
     });
 
@@ -479,6 +562,7 @@ export const uploadToShot = action({
       throw new ConvexError("No Drive hub connected — connect one in settings");
     }
     const token = await freshTokenOrClean(ctx, info.hub.connectionId);
+    await assertDriveSpace(token, info.hub, args.bytes.byteLength, info.canSeeQuota);
     const { optionsId } = await ensureShotFolders(ctx, token, info.hub, info.shot);
     const file = await multipartUpload(token, {
       name: args.name,
@@ -524,6 +608,140 @@ export const uploadToShot = action({
   },
 });
 
+/**
+ * Space check before an upload starts. The dropzone calls it for every batch:
+ * small files reach Drive later (mirrorUploadToHub), and refusing them then
+ * would be too late to tell anyone. Advisory by design — only a genuine
+ * shortfall throws. No hub, an expired hub token or Google being unreachable
+ * all return null, because a small upload never needed Drive to succeed and
+ * a large one gets the real error from beginLargeUpload.
+ */
+export const checkUploadSpace = action({
+  args: { productionId: v.id("productions"), bytes: v.number() },
+  handler: async (ctx, args): Promise<null> => {
+    const info = await ctx.runQuery(internal.drive.spaceContext, {
+      productionId: args.productionId,
+    });
+    if (info.hub === null) return null; // nothing goes to Drive yet
+    try {
+      const token = await getFreshToken(ctx, info.hub.connectionId);
+      await assertDriveSpace(token, info.hub, args.bytes, info.canSeeQuota);
+    } catch (e) {
+      if (e instanceof DriveSpaceError) throw e;
+      console.log(`checkUploadSpace: skipped — ${String(e)}`);
+    }
+    return null;
+  },
+});
+
+/**
+ * Large upload, step 1 of 2: checks space, then opens a resumable upload
+ * session in the shot's Options/ folder with the hub token. The browser PUTs
+ * the file to the returned URL itself, so the bytes never pass through
+ * Convex and there is no 20 MB ceiling.
+ */
+export const beginLargeUpload = action({
+  args: {
+    shotId: v.id("shots"),
+    name: v.string(),
+    mimeType: v.string(),
+    sizeBytes: v.number(),
+    /** window.location.origin — the session's CORS binding, see below. */
+    origin: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ uploadUrl: string }> => {
+    if (!args.mimeType.startsWith("image/") && !args.mimeType.startsWith("video/")) {
+      throw new ConvexError("Only images and video become options");
+    }
+    if (!Number.isFinite(args.sizeBytes) || args.sizeBytes <= 0) {
+      throw new ConvexError("That file is empty");
+    }
+    const info = await ctx.runQuery(internal.drive.uploadContext, {
+      shotId: args.shotId,
+    });
+    if (!info.hub) {
+      throw new ConvexError(
+        `Files over ${megabytes(DIRECT_UPLOAD_MIN_BYTES)} are stored in Google Drive — ` +
+          "an owner or producer needs to set up the Drive hub in Settings first.",
+      );
+    }
+    // Drive only answers the browser's cross-origin PUT from the origin the
+    // session was opened with. That is a CORS binding, not an authorization
+    // boundary (only this authenticated caller ever sees the session URL), so
+    // the page's own origin is the right value; SITE_URL is the fallback and
+    // a mismatch is worth a log line, because it usually means SITE_URL is
+    // stale after a domain move.
+    const origin = resolveUploadOrigin(args.origin);
+    const token = await freshTokenOrClean(ctx, info.hub.connectionId);
+    await assertDriveSpace(token, info.hub, args.sizeBytes, info.canSeeQuota);
+    const { optionsId } = await ensureShotFolders(ctx, token, info.hub, info.shot);
+    const uploadUrl = await startResumableUpload(token, {
+      name: args.name,
+      mimeType: args.mimeType,
+      parents: [optionsId],
+      sizeBytes: args.sizeBytes,
+      origin,
+    });
+    return { uploadUrl };
+  },
+});
+
+/**
+ * Large upload, step 2 of 2: registers the uploaded Drive file as the shot's
+ * next option. Only a file that really sits in this shot's Options/ folder
+ * is accepted, and registering the same file twice returns the first result.
+ */
+export const finishLargeUpload = action({
+  args: {
+    shotId: v.id("shots"),
+    driveFileId: v.string(),
+    thumbStorageId: v.optional(v.id("_storage")),
+    promptMeta: v.optional(promptMetaValidator),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ versionId: Id<"versions">; index: number }> => {
+    // Same message as the folder check: a malformed id must not be told apart
+    // from a wrong-folder one, and it never reaches Drive.
+    if (!/^[A-Za-z0-9_-]{10,}$/.test(args.driveFileId)) {
+      throw new ConvexError("That file isn't in this shot's Options folder");
+    }
+    const info = await ctx.runQuery(internal.drive.uploadContext, {
+      shotId: args.shotId,
+    });
+    if (!info.hub) throw new ConvexError("No Drive hub connected");
+    const token = await freshTokenOrClean(ctx, info.hub.connectionId);
+    const { optionsId } = await ensureShotFolders(ctx, token, info.hub, info.shot);
+    const file = await getFileMeta(token, args.driveFileId);
+    if (!file.parents?.includes(optionsId) || file.trashed === true) {
+      throw new ConvexError("That file isn't in this shot's Options folder");
+    }
+    // beginLargeUpload's rule, re-checked on what actually landed in Drive.
+    const mimeType = file.mimeType ?? "";
+    if (!mimeType.startsWith("image/") && !mimeType.startsWith("video/")) {
+      throw new ConvexError("Only images and video become options");
+    }
+    const thumbStorageId =
+      args.thumbStorageId ??
+      (await cacheDriveThumb(ctx, token, file.thumbnailLink));
+    return await ctx.runMutation(internal.drive.registerDriveUpload, {
+      shotId: args.shotId,
+      createdBy: info.userId,
+      driveFileId: file.id,
+      driveParentId: optionsId,
+      name: file.name,
+      ...(file.mimeType !== undefined ? { mimeType: file.mimeType } : {}),
+      ...(file.size !== undefined ? { sizeBytes: Number(file.size) } : {}),
+      ...(file.md5Checksum !== undefined ? { md5: file.md5Checksum } : {}),
+      ...(file.webViewLink !== undefined ? { webViewLink: file.webViewLink } : {}),
+      ...(thumbStorageId !== undefined ? { thumbStorageId } : {}),
+      ownerConnectionId: info.hub.connectionId,
+      ...(args.promptMeta !== undefined ? { promptMeta: args.promptMeta } : {}),
+    });
+  },
+});
+
 export const attachFromPicker = action({
   args: {
     shotId: v.id("shots"),
@@ -565,8 +783,10 @@ export const attachFromPicker = action({
     // each file whole, and meeting a camera master halfway through the loop
     // would OOM it with the attach already half done (spec §7.3).
     const tooLarge: string[] = [];
+    let totalBytes = 0;
     for (const picked of args.files) {
       const size = await pickedFileSize(myToken, picked.id);
+      totalBytes += size ?? 0;
       if (size !== null && size > MAX_PICKER_FILE_BYTES) {
         tooLarge.push(`${picked.name} (${megabytes(size)})`);
       }
@@ -576,6 +796,8 @@ export const attachFromPicker = action({
         `Kinolab copies files up to ${MAX_PICKER_FILE_LABEL} from Drive — too large: ${tooLarge.join(", ")}. Share those as a link instead.`,
       );
     }
+    // Each pick is copied into the hub, so the copies need room there.
+    await assertDriveSpace(hubToken, info.hub, totalBytes, info.canSeeQuota);
 
     let attached = 0;
     const skipped: string[] = [];
@@ -1001,6 +1223,62 @@ async function copyPickedFileToHub(
 }
 
 /**
+ * Puts the folder guide (lib/hubReadme.ts) at the top of a hub, converted to
+ * a Google Doc. Best-effort: a hub without its guide still works, so a
+ * failure is logged and never fails the scaffold.
+ */
+async function writeHubReadme(
+  token: string,
+  rootFolderId: string,
+  production: { code: string; name: string },
+): Promise<string | undefined> {
+  try {
+    const file = await multipartUpload(token, {
+      name: HUB_README_NAME,
+      mimeType: "application/vnd.google-apps.document",
+      mediaType: "text/html",
+      parents: [rootFolderId],
+      bytes: new TextEncoder().encode(hubReadmeHtml(production)),
+    });
+    return file.id;
+  } catch (e) {
+    console.log(`writeHubReadme: could not write the guide: ${String(e)}`);
+    return undefined;
+  }
+}
+
+/**
+ * Adds the folder guide to a hub created before guides existed. Operator
+ * command: npx convex run drive:addHubReadme '{"productionId":"…"}'.
+ */
+export const addHubReadme = internalAction({
+  args: { productionId: v.id("productions") },
+  handler: async (ctx, args): Promise<string> => {
+    const info = await ctx.runQuery(internal.drive.hubReadmeContext, args);
+    if (info === null) return "No Drive hub on this production";
+    const token = await getFreshToken(ctx, info.hub.connectionId);
+    if (info.hub.readmeFileId !== undefined) {
+      // Members may trash the guide while tidying; only a live Doc counts.
+      const alive = await getFileMeta(token, info.hub.readmeFileId)
+        .then((f) => f.trashed !== true)
+        .catch(() => false); // 404 = hard-deleted
+      if (alive) return "Guide already present";
+    }
+    const readmeFileId = await writeHubReadme(
+      token,
+      info.hub.rootFolderId,
+      info,
+    );
+    if (readmeFileId === undefined) throw new Error("Could not write the guide");
+    await ctx.runMutation(internal.drive.setHubReadme, {
+      productionId: args.productionId,
+      readmeFileId,
+    });
+    return `Guide written: ${readmeFileId}`;
+  },
+});
+
+/**
  * Lazily ensure "04 Production/Shots/{code}/" with "Options" and "Approved"
  * children, persisting shot.driveFolderId the first time.
  */
@@ -1154,7 +1432,9 @@ async function runSync(
         if (f.mimeType === FOLDER_MIME && f.trashed !== true) queue.push(f.id);
       }
     }
-    const regular = files.filter((f) => f.mimeType !== FOLDER_MIME);
+    const regular = files.filter(
+      (f) => f.mimeType !== FOLDER_MIME && f.id !== args.hub.readmeFileId,
+    );
     if (regular.length === 0) continue;
 
     const result = await ctx.runMutation(internal.drive.upsertSyncedFiles, {
@@ -1315,6 +1595,8 @@ type UploadContext = {
   shot: { _id: Id<"shots">; code: string; driveFolderId: string | null };
   hub: HubInfo | null;
   myConnectionId: Id<"googleConnections"> | null;
+  /** production.manage: may see the hub owner's free-space figure. */
+  canSeeQuota: boolean;
 };
 
 export const uploadContext = internalQuery({
@@ -1322,7 +1604,7 @@ export const uploadContext = internalQuery({
   handler: async (ctx, args): Promise<UploadContext> => {
     const shot = await ctx.db.get(args.shotId);
     if (shot === null) throw new Error("Shot not found");
-    const { userId, production } = await assertCanForProduction(
+    const { userId, member, production } = await assertCanForProduction(
       ctx,
       shot.productionId,
       "version.create",
@@ -1338,6 +1620,7 @@ export const uploadContext = internalQuery({
       },
       hub: production.hub ?? null,
       myConnectionId: mine?._id ?? null,
+      canSeeQuota: roleHas(member.role, "production.manage"),
     };
   },
 });
@@ -1666,6 +1949,7 @@ export const setHub = internalMutation({
       folderIds: v.record(v.string(), v.string()),
       driveKind: v.union(v.literal("myDrive"), v.literal("sharedDrive")),
       sharedDriveId: v.optional(v.string()),
+      readmeFileId: v.optional(v.string()),
     }),
   },
   handler: async (ctx, args): Promise<null> => {
@@ -1679,6 +1963,122 @@ export const setHub = internalMutation({
       targetType: "production",
       targetId: args.productionId,
       summary: `${await actorName(ctx, args.actorId)} created the Drive hub "${args.rootName}" (${Object.keys(args.hub.folderIds).length + 1} folders)`,
+    });
+    return null;
+  },
+});
+
+export const spaceContext = internalQuery({
+  args: { productionId: v.id("productions") },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ hub: HubInfo | null; canSeeQuota: boolean }> => {
+    const { member, production } = await assertCanForProduction(
+      ctx,
+      args.productionId,
+      "version.create",
+    );
+    return {
+      hub: production.hub ?? null,
+      canSeeQuota: roleHas(member.role, "production.manage"),
+    };
+  },
+});
+
+/**
+ * One transaction, so it can't race the sync: a file the sync already
+ * imported as a loose asset is adopted, and one that already backs a version
+ * returns that version instead of creating a second.
+ */
+export const registerDriveUpload = internalMutation({
+  args: {
+    shotId: v.id("shots"),
+    createdBy: v.id("users"),
+    driveFileId: v.string(),
+    driveParentId: v.string(),
+    name: v.string(),
+    mimeType: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
+    md5: v.optional(v.string()),
+    webViewLink: v.optional(v.string()),
+    thumbStorageId: v.optional(v.id("_storage")),
+    ownerConnectionId: v.id("googleConnections"),
+    promptMeta: v.optional(promptMetaValidator),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ versionId: Id<"versions">; index: number }> => {
+    const existing = await ctx.db
+      .query("assets")
+      .withIndex("by_driveFileId", (q) => q.eq("driveFileId", args.driveFileId))
+      .first();
+    if (existing?.versionId !== undefined) {
+      const version = await ctx.db.get(existing.versionId);
+      if (version !== null) {
+        // A file moved in Drive under another shot's Options/ still backs its
+        // original version; it must not be reported as this shot's option.
+        if (version.shotId !== args.shotId) {
+          const other = await ctx.db.get(version.shotId);
+          throw new ConvexError(
+            `That file already backs v${version.index} of ${other?.code ?? "another shot"}`,
+          );
+        }
+        // Idempotent retry — the dropzone registers first and sends the
+        // thumbnail in a second call, so adopt it here.
+        if (
+          args.thumbStorageId !== undefined &&
+          existing.thumbStorageId === undefined
+        ) {
+          await ctx.db.patch(existing._id, {
+            thumbStorageId: args.thumbStorageId,
+            ...(args.md5 !== undefined ? { thumbForMd5: args.md5 } : {}),
+          });
+        }
+        return { versionId: version._id, index: version.index };
+      }
+    }
+    const { shotId, createdBy, promptMeta, ...asset } = args;
+    if (existing !== null) {
+      if (asset.thumbStorageId !== undefined && existing.thumbStorageId === undefined) {
+        await ctx.db.patch(existing._id, {
+          thumbStorageId: asset.thumbStorageId,
+          ...(asset.md5 !== undefined ? { thumbForMd5: asset.md5 } : {}),
+        });
+      }
+      return await createVersionWithAssetHelper(ctx, {
+        shotId,
+        createdBy,
+        asset: { existingAssetId: existing._id },
+        ...(promptMeta !== undefined ? { promptMeta } : {}),
+      });
+    }
+    return await createVersionWithAssetHelper(ctx, {
+      shotId,
+      createdBy,
+      asset: { provider: "gdrive", ...asset },
+      ...(promptMeta !== undefined ? { promptMeta } : {}),
+    });
+  },
+});
+
+export const hubReadmeContext = internalQuery({
+  args: { productionId: v.id("productions") },
+  handler: async (ctx, args) => {
+    const production = await ctx.db.get(args.productionId);
+    if (!production?.hub) return null;
+    return { code: production.code, name: production.name, hub: production.hub };
+  },
+});
+
+export const setHubReadme = internalMutation({
+  args: { productionId: v.id("productions"), readmeFileId: v.string() },
+  handler: async (ctx, args): Promise<null> => {
+    const production = await ctx.db.get(args.productionId);
+    if (!production?.hub) return null;
+    await ctx.db.patch(args.productionId, {
+      hub: { ...production.hub, readmeFileId: args.readmeFileId },
     });
     return null;
   },
@@ -1863,7 +2263,12 @@ export const upsertSyncedFiles = internalMutation({
       missing: 0,
       thumbsNeeded: [],
     };
+    // runSync already filters the guide Doc out; this is the backstop for a
+    // sync whose hub snapshot predates setHubReadme (mutations serialise).
+    const production = await ctx.db.get(args.productionId);
+    const readmeFileId = production?.hub?.readmeFileId;
     for (const file of args.files) {
+      if (file.id === readmeFileId) continue;
       const existing = await ctx.db
         .query("assets")
         .withIndex("by_driveFileId", (q) => q.eq("driveFileId", file.id))
