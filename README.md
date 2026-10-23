@@ -459,6 +459,18 @@ Drive's own UI stay invisible to it — see the note in the demo script). All hu
 personal tokens only read files their owner picked. Thumbnails are cached in
 Convex storage; full files never pass through the app.
 
+### Several Google accounts, one hub account per production
+
+Each person can connect more than one Google account (Settings › Drive hub
+→ "Connect another Google account"); the first one connected is their
+default (`googleConnections.isDefault` overrides it). A production's hub is
+created in whichever of the creator's accounts they choose; "Use a different
+Google account…" rebuilds the tree in another account and leaves the old
+hub's files where they are — they stay readable as long as that account
+stays connected, and `drive.hub_switched` lands in the activity feed. The
+Picker and Attach from Drive read with the hub's account when it belongs to
+the current user, otherwise with their default.
+
 ### Large uploads, Drive space and the folder guide
 
 - **Files over 20 MB go from the browser straight into the production's
@@ -774,6 +786,14 @@ none of it has a safe default that guesses right.
       `npx convex run migrations:verifyUserEmail '{"email":"name@studio.com"}'`.
       From then on "Continue with Google" with that address lands in their
       existing account; their password keeps working too.
+   3b. Someone whose Google account uses a *different* address than their
+      Kinolab account (a personal gmail, say) is refused as a stranger —
+      the sign-in page says so and points at hello@kinolab.ai. Move the
+      account to that address instead of creating a second one:
+      `npx convex run migrations:relabelUserEmail '{"from":"old@studio.com","to":"name@gmail.com"}'`
+      (their password keeps signing in under the old address). Do this
+      *before* allow-listing the new address, or a retry creates an empty
+      second account.
    4. `npx convex env set ALLOW_PASSWORD_SIGNUPS 0` — new people join with
       Google (the invite attaches to the verified address), existing
       password sign-ins are unaffected.

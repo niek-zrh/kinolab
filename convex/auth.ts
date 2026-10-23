@@ -18,7 +18,7 @@ const password = Password({
   profile(params) {
     if (params.flow === "signUp" && !passwordSignupAllowed(process.env)) {
       throw new ConvexError(
-        "Password registration is disabled here. Use your invited Google account or contact your producer.",
+        "Password registration is disabled here. Use your invited Google account or contact your producer — or write to hello@kinolab.ai about the services we offer.",
       );
     }
     if (typeof params.email !== "string")
@@ -146,7 +146,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       }
       if (!(await signupAllowed(ctx, email))) {
         throw new ConvexError(
-          "Sign-ups are invite-only — ask your producer to invite this email.",
+          "This account isn't allowed in yet. Kinolab is invite-only — ask your producer to invite this email, or contact hello@kinolab.ai about the services we offer.",
         );
       }
       const userId = await ctx.db.insert("users", {

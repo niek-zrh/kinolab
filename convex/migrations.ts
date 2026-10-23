@@ -272,3 +272,34 @@ export const verifyUserEmail = internalMutation({
     return `Verified ${email}: Google sign-in with this address now links to the account`;
   },
 });
+
+/**
+ * Operator: move an existing account to a different email — the address a
+ * person's Google account uses — so "Continue with Google" lands in the
+ * account they already have (studio, productions, history) instead of
+ * creating a second one or being refused. The password credential keeps
+ * its original address, so that sign-in keeps working too. Refuses when
+ * another account already carries the new address.
+ *   npx convex run migrations:relabelUserEmail '{"from":"old@x","to":"new@y"}'
+ */
+export const relabelUserEmail = internalMutation({
+  args: { from: v.string(), to: v.string() },
+  handler: async (ctx, args): Promise<string> => {
+    const from = args.from.toLowerCase().trim();
+    const to = args.to.toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return `${to} is not an email address`;
+    const taken = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", to))
+      .take(1);
+    if (taken.length > 0) return `${to} already belongs to another account — resolve that first`;
+    const matches = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", from))
+      .take(2);
+    if (matches.length === 0) return `No user with the email ${from}`;
+    if (matches.length > 1) return `Several users carry ${from} — resolve that first`;
+    await ctx.db.patch(matches[0]._id, { email: to, emailVerificationTime: Date.now() });
+    return `${from} is now ${to} (verified): Google sign-in with ${to} lands in this account; the password still signs in as ${from}`;
+  },
+});

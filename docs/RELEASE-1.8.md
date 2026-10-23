@@ -23,6 +23,14 @@
   and asking that it is not reorganised outside Kinolab.
 - **The Drive picker browses by folder**, with This production, My Drive,
   Shared drives and Recent tabs, and opens on the production's hub.
+- **Several Google accounts per person, one per production.** The first
+  Google account you connect is your default (a star marks it; "Make
+  default" moves it). When creating a production's Drive hub you pick which
+  of your accounts it lives in, or connect another on the spot; "Use a
+  different Google account…" on an existing hub builds a fresh folder tree
+  in the other account — files already in the old hub stay where they are,
+  new uploads and picks go to the new one. Attach from Drive browses the
+  production's account when it is yours, otherwise your default.
 - **Videos that live in Drive play inside the Review Room**, streamed through
   Kinolab — no Google tab, no Google login in the browser — with seeking and
   timestamped notes as for uploads. A codec the browser cannot decode
@@ -48,7 +56,10 @@
 plus the `/api/auth/callback/google` redirect URI). Accounts that started
 with a password are unverified and must be vouched for once with
 `npx convex run migrations:verifyUserEmail '{"email":"…"}'` before Google
-sign-in links to them — README › Go-live checklist has the four steps.
+sign-in links to them — README › Go-live checklist has the four steps. A
+Google account under a different address is refused with a visible
+explanation on the sign-in page (invite-only, contact hello@kinolab.ai);
+`migrations:relabelUserEmail` moves an existing account to that address.
 
 ## For developers
 
@@ -85,7 +96,11 @@ sign-in links to them — README › Go-live checklist has the four steps.
    Drive, Shared drives and Recent tabs browse by folder.
 5. Review Room: edit and delete your own comment; confirm a colleague sees
    neither control on it.
-6. Review Room on a shot whose video was uploaded over 20 MB (so it lives in
+6. Settings › Drive hub: connect a second Google account, create a new
+   production's hub in it, and confirm the folder tree lands in that
+   account's Drive; on the first production, "Use a different Google
+   account…" and check the old files still open.
+7. Review Room on a shot whose video was uploaded over 20 MB (so it lives in
    Drive): it plays in the room, seeking works, and a timestamped note seeks
    back to its moment. Then remove a tester from Team and confirm their
    Review Room stops within minutes (new seeks answer 403; already-buffered

@@ -3,7 +3,7 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -89,6 +89,12 @@ export default function SignInPage() {
   const providers = useQuery(api.users.authProviders);
   const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
   const [error, setError] = useState<string | null>(null);
+  // Set when Google sent us back without signing us in (see the button).
+  const [googleRefused, setGoogleRefused] = useState(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setGoogleRefused(params.get("via") === "google" && !params.has("code"));
+  }, []);
   const [busy, setBusy] = useState(false);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -187,10 +193,30 @@ export default function SignInPage() {
           <Button
             variant="outline"
             className="mt-3 w-full"
-            onClick={() => void signIn("google", { redirectTo: "/" })}
+            // A refused Google account comes back here (Convex Auth sends a
+            // failed callback to the same redirectTo, without a code); a
+            // successful one is forwarded off this page by the middleware.
+            onClick={() =>
+              void signIn("google", { redirectTo: "/sign-in?via=google" })
+            }
           >
             Continue with Google
           </Button>
+        )}
+        {googleRefused && (
+          <p
+            role="alert"
+            className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+          >
+            That Google account isn&apos;t allowed in yet. Kinolab is
+            invite-only: ask your producer to invite that address, or contact{" "}
+            <a href="mailto:hello@kinolab.ai" className="underline underline-offset-2">
+              hello@kinolab.ai
+            </a>{" "}
+            about the services we offer. Invited and still stuck? Sign in with
+            the Google account whose address matches your invite, or use your
+            password.
+          </p>
         )}
 
         {(providers?.passwordSignup !== false || flow === "signUp") && (

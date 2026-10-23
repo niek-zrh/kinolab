@@ -86,7 +86,7 @@ export function AttachFromDrive({
       onClick={async () => {
         setBusy(true);
         try {
-          const config = await getPickerConfig({});
+          const config = await getPickerConfig({ productionId });
           const files = await openDrivePicker(config, {
             startFolderId: status.hub.rootFolderId,
           });

@@ -19,13 +19,13 @@ import {
   roleHas,
 } from "./lib/permissions";
 import { actorName, logActivity } from "./lib/activity";
-import { notify } from "./lib/notify";
 import {
   canonicalApprovedName,
   extensionFor,
   HUB_FOLDERS,
 } from "./lib/domain";
 import { HUB_README_NAME, hubReadmeHtml } from "./lib/hubReadme";
+import { defaultConnection, readerConnection } from "./lib/driveAccounts";
 import {
   MEDIA_GRANT_TTL_MS,
   playableMime,
@@ -313,16 +313,35 @@ async function permissionDelete(
  * more than one — "mine" is the latest account they consented with, while
  * every hub keeps the account that created it.
  */
+/** Every Google account this person has connected, oldest first. */
+async function myConnections(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+): Promise<Doc<"googleConnections">[]> {
+  return await ctx.db
+    .query("googleConnections")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+}
+
+/** My default account — the first I connected unless I flagged another. */
 async function myConnectionRow(
   ctx: QueryCtx,
   userId: Id<"users">,
 ): Promise<Doc<"googleConnections"> | null> {
-  const rows = await ctx.db
-    .query("googleConnections")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .order("desc")
-    .collect();
-  return rows.find((r) => r.revoked !== true) ?? rows[0] ?? null;
+  return defaultConnection(await myConnections(ctx, userId));
+}
+
+/**
+ * The account to read Drive with for one production (Picker, Attach from
+ * Drive): the hub's own account when it is one of mine, else my default.
+ */
+async function readerConnectionRow(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  hub: HubInfo | null,
+): Promise<Doc<"googleConnections"> | null> {
+  return readerConnection(await myConnections(ctx, userId), hub?.connectionId ?? null);
 }
 
 /**
@@ -330,17 +349,6 @@ async function myConnectionRow(
  * hubProductions — a pilot studio has a handful of productions and there is no
  * index on hub.connectionId.
  */
-async function productionsForConnections(
-  ctx: MutationCtx,
-  connectionIds: Id<"googleConnections">[],
-): Promise<Doc<"productions">[]> {
-  if (connectionIds.length === 0) return [];
-  const ids = new Set<string>(connectionIds);
-  const productions = await ctx.db.query("productions").collect();
-  return productions.filter(
-    (p) => p.hub !== undefined && ids.has(p.hub.connectionId),
-  );
-}
 
 // ===========================================================================
 // Public surface
@@ -352,11 +360,22 @@ export const connectionStatus = query({
     ctx,
     args,
   ): Promise<{
+    /** My default account (first connected unless flagged), or null. */
     myConnection: { email: string; revoked: boolean } | null;
+    /** Every account I connected, oldest first. */
+    myConnections: {
+      _id: Id<"googleConnections">;
+      email: string;
+      revoked: boolean;
+      isDefault: boolean;
+    }[];
     hub: {
       connected: boolean;
       rootFolderId?: string;
       ownerEmail?: string;
+      ownerConnectionId?: Id<"googleConnections">;
+      /** The hub's account is one of mine (so I can reconnect or pick in it). */
+      ownerIsMine?: boolean;
       revoked?: boolean;
     };
   }> => {
@@ -365,6 +384,8 @@ export const connectionStatus = query({
       connected: boolean;
       rootFolderId?: string;
       ownerEmail?: string;
+      ownerConnectionId?: Id<"googleConnections">;
+      ownerIsMine?: boolean;
       revoked?: boolean;
     } = { connected: false };
     if (args.productionId !== undefined) {
@@ -377,19 +398,49 @@ export const connectionStatus = query({
         hub = {
           connected: true,
           rootFolderId: production.hub.rootFolderId,
+          ownerConnectionId: production.hub.connectionId,
           ...(conn !== null ? { ownerEmail: conn.email } : {}),
+          ownerIsMine: conn?.userId === userId,
           revoked: conn?.revoked === true,
         };
       }
     }
-    const mine = await myConnectionRow(ctx, userId);
+    const rows = (await myConnections(ctx, userId)).sort(
+      (a, b) => a._creationTime - b._creationTime,
+    );
+    const mine = defaultConnection(rows);
     return {
       myConnection:
         mine === null
           ? null
           : { email: mine.email, revoked: mine.revoked === true },
+      myConnections: rows.map((r) => ({
+        _id: r._id,
+        email: r.email,
+        revoked: r.revoked === true,
+        isDefault: mine !== null && r._id === mine._id,
+      })),
       hub,
     };
+  },
+});
+
+/** Flag one of my connected Google accounts as the one hubs default to. */
+export const setDefaultConnection = mutation({
+  args: { connectionId: v.id("googleConnections") },
+  handler: async (ctx, args): Promise<null> => {
+    const userId = await requireUserId(ctx);
+    const rows = await myConnections(ctx, userId);
+    if (!rows.some((r) => r._id === args.connectionId)) {
+      throw new ConvexError("That Google account is not connected to your Kinolab account");
+    }
+    for (const row of rows) {
+      const isDefault = row._id === args.connectionId;
+      if ((row.isDefault === true) !== isDefault) {
+        await ctx.db.patch(row._id, { isDefault: isDefault ? true : undefined });
+      }
+    }
+    return null;
   },
 });
 
@@ -454,18 +505,36 @@ export const scaffoldHub = action({
     productionId: v.id("productions"),
     parentFolderId: v.optional(v.string()),
     sharedDriveId: v.optional(v.string()),
+    /** One of MY connected accounts; my default when omitted. */
+    connectionId: v.optional(v.id("googleConnections")),
+    /**
+     * Build a fresh hub for a production that already has one, in the chosen
+     * account. Files in the old hub stay where they are (their assets keep
+     * pointing at them); new uploads and picks go to the new hub.
+     */
+    replace: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{ rootFolderId: string }> => {
     const info = await ctx.runQuery(internal.drive.scaffoldContext, {
       productionId: args.productionId,
     });
-    if (info.hubExists) {
-      throw new ConvexError("This production already has a Drive hub");
+    const chosen =
+      args.connectionId !== undefined
+        ? info.connections.find((c) => c._id === args.connectionId)
+        : info.connections.find((c) => c._id === info.defaultConnectionId);
+    if (args.connectionId !== undefined && chosen === undefined) {
+      throw new ConvexError("That Google account is not connected to your Kinolab account");
     }
-    if (info.connectionId === null) {
+    if (chosen === undefined) {
       throw new ConvexError("Connect your Google Drive first (Settings → Drive)");
     }
-    const token = await freshTokenOrClean(ctx, info.connectionId);
+    if (info.currentHub !== null && args.replace !== true) {
+      throw new ConvexError("This production already has a Drive hub");
+    }
+    if (info.currentHub !== null && info.currentHub.connectionId === chosen._id) {
+      throw new ConvexError("This production's hub already uses that Google account");
+    }
+    const token = await freshTokenOrClean(ctx, chosen._id);
 
     const rootName = `${info.code} — ${info.name}`;
     const rootParent = args.parentFolderId ?? args.sharedDriveId;
@@ -491,8 +560,12 @@ export const scaffoldHub = action({
       productionId: args.productionId,
       actorId: info.userId,
       rootName,
+      ownerEmail: chosen.email,
+      ...(info.currentHub !== null
+        ? { switchedFrom: info.currentHub.ownerEmail ?? "another Google account" }
+        : {}),
       hub: {
-        connectionId: info.connectionId,
+        connectionId: chosen._id,
         rootFolderId: root.id,
         folderIds,
         // Drive, not the caller, decides where the root lives: "Pick a
@@ -504,13 +577,24 @@ export const scaffoldHub = action({
       },
     });
 
+    // A replaced hub: every shot's cached "Shots/{code}" folder pointed into
+    // the old tree; forgetting it makes ensureShotFolders rebuild in the new.
+    if (info.currentHub !== null) {
+      let cursor: string | null = null;
+      do {
+        const page: { continueCursor: string; isDone: boolean } =
+          await ctx.runMutation(internal.drive.clearShotDriveFolders, {
+            productionId: args.productionId,
+            cursor,
+          });
+        cursor = page.isDone ? null : page.continueCursor;
+      } while (cursor !== null);
+    }
+
     // Share the root with every member that has joined — best-effort each.
     // (Pending invites are shared when they accept, see scaffoldContext.)
     for (const member of info.members) {
-      if (
-        info.connectionEmail !== null &&
-        sameEmail(member.email, info.connectionEmail)
-      ) {
+      if (sameEmail(member.email, chosen.email)) {
         continue; // the hub owner already owns the folder
       }
       try {
@@ -530,11 +614,17 @@ export const scaffoldHub = action({
 
 /** Short-lived token pass for the Google Picker — MY connection only. */
 export const getPickerConfig = action({
-  args: {},
+  args: {
+    /** Read with the hub's account when it is mine, else my default. */
+    productionId: v.optional(v.id("productions")),
+    /** One of MY accounts, e.g. the one a new hub is being created in. */
+    connectionId: v.optional(v.id("googleConnections")),
+  },
   handler: async (
     ctx,
+    args,
   ): Promise<{ accessToken: string; apiKey: string; appId: string }> => {
-    const mine = await ctx.runQuery(internal.drive.myConnection, {});
+    const mine = await ctx.runQuery(internal.drive.pickerConnection, args);
     if (!mine) {
       throw new ConvexError("Connect your Google Drive first (Settings → Drive)");
     }
@@ -1599,11 +1689,12 @@ export const myConnection = internalQuery({
 
 type ScaffoldContext = {
   userId: Id<"users">;
-  connectionId: Id<"googleConnections"> | null;
-  connectionEmail: string | null;
+  /** My connected accounts that still work, oldest first. */
+  connections: { _id: Id<"googleConnections">; email: string }[];
+  defaultConnectionId: Id<"googleConnections"> | null;
   name: string;
   code: string;
-  hubExists: boolean;
+  currentHub: { connectionId: Id<"googleConnections">; ownerEmail: string | null } | null;
   members: { email: string; role: string }[];
 };
 
@@ -1615,7 +1706,12 @@ export const scaffoldContext = internalQuery({
       args.productionId,
       "production.manage",
     );
-    const mine = await myConnectionRow(ctx, userId);
+    const rows = (await myConnections(ctx, userId))
+      .filter((r) => r.revoked !== true)
+      .sort((a, b) => a._creationTime - b._creationTime);
+    const mine = defaultConnection(rows);
+    const currentOwner =
+      production.hub !== undefined ? await ctx.db.get(production.hub.connectionId) : null;
     const memberships = await ctx.db
       .query("memberships")
       .withIndex("by_studio", (q) => q.eq("studioId", production.studioId))
@@ -1633,11 +1729,17 @@ export const scaffoldContext = internalQuery({
     }
     return {
       userId,
-      connectionId: mine?._id ?? null,
-      connectionEmail: mine?.email ?? null,
+      connections: rows.map((r) => ({ _id: r._id, email: r.email })),
+      defaultConnectionId: mine?._id ?? null,
       name: production.name,
       code: production.code,
-      hubExists: production.hub !== undefined,
+      currentHub:
+        production.hub !== undefined
+          ? {
+              connectionId: production.hub.connectionId,
+              ownerEmail: currentOwner?.email ?? null,
+            }
+          : null,
       members,
     };
   },
@@ -1663,7 +1765,7 @@ export const uploadContext = internalQuery({
       shot.productionId,
       "version.create",
     );
-    const mine = await myConnectionRow(ctx, userId);
+    const mine = await readerConnectionRow(ctx, userId, production.hub ?? null);
     return {
       userId,
       productionId: production._id,
@@ -1899,10 +2001,7 @@ export const saveConnection = internalMutation({
   handler: async (ctx, args): Promise<Id<"googleConnections">> => {
     const state = await ctx.db.get(args.stateId);
     if (state !== null) await ctx.db.delete(args.stateId);
-    const rows = await ctx.db
-      .query("googleConnections")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect(); // oldest first
+    const rows = await myConnections(ctx, args.userId);
 
     const fresh = {
       googleUserId: args.googleUserId,
@@ -1913,8 +2012,8 @@ export const saveConnection = internalMutation({
       revoked: undefined, // reconnecting clears a revoked flag
     };
 
-    // The common case: the SAME Google account reconnects (expired refresh
-    // token). Patch its row in place — hubs bound to it start working again.
+    // The SAME Google account reconnecting (expired refresh token): patch
+    // its row in place — hubs bound to it start working again.
     const same = rows.find((r) => r.googleUserId === args.googleUserId);
     if (same !== undefined) {
       await ctx.db.patch(same._id, {
@@ -1924,71 +2023,20 @@ export const saveConnection = internalMutation({
       return same._id;
     }
 
-    /**
-     * A DIFFERENT Google account. Under `drive.file` the new token can see
-     * nothing the old account created, so overwriting a row that a
-     * production.hub points at would leave every hub write and every sync
-     * talking to a Drive where the hub does not exist — and sync would keep
-     * reporting "up to date" forever (spec §7). Rows a hub depends on are
-     * therefore never repointed: the hub keeps naming the account that built
-     * it, the UI keeps showing it as the hub owner, and its writes fail loudly
-     * ("Drive connection expired — reconnect") instead of quietly.
-     */
-    const hubbed = await productionsForConnections(
-      ctx,
-      rows.map((r) => r._id),
-    );
-    const hubbedIds = new Set<string>(
-      hubbed.flatMap((p) => (p.hub !== undefined ? [p.hub.connectionId] : [])),
-    );
-    const reusable = rows.filter((r) => !hubbedIds.has(r._id));
-    const target = reusable[reusable.length - 1];
-
-    let connectionId: Id<"googleConnections">;
-    if (target !== undefined) {
-      // No hub depends on this row — switching accounts on it is harmless.
-      await ctx.db.patch(target._id, {
-        ...fresh,
-        refreshToken: args.refreshToken ?? target.refreshToken,
-      });
-      connectionId = target._id;
-    } else {
-      connectionId = await ctx.db.insert("googleConnections", {
-        userId: args.userId,
-        googleUserId: args.googleUserId,
-        email: args.email,
-        accessToken: args.accessToken,
-        refreshToken: args.refreshToken,
-        expiresAt: args.expiresAt,
-        scopes: args.scopes,
-      });
-    }
-
-    // Say it out loud on every production that stayed behind: silence here is
-    // exactly how a studio ends up believing its files are safe.
-    const actor = await actorName(ctx, args.userId);
-    for (const production of hubbed) {
-      if (production.hub === undefined) continue;
-      const owner = await ctx.db.get(production.hub.connectionId);
-      const ownerEmail = owner?.email ?? "another Google account";
-      await logActivity(ctx, {
-        productionId: production._id,
-        actorId: args.userId,
-        type: "drive.hub_owner_mismatch",
-        targetType: "production",
-        targetId: production._id,
-        summary: `${actor} connected Google account ${args.email}, but this Drive hub was created by ${ownerEmail} — hub writes and sync keep using ${ownerEmail}`,
-      });
-      await notify(ctx, {
-        userId: args.userId,
-        productionId: production._id,
-        type: "drive.hub_owner_mismatch",
-        title: "Drive hub belongs to a different Google account",
-        body: `You connected ${args.email}, but the Drive hub for ${production.name} was created by ${ownerEmail}. Google only lets Kinolab see files it created for that account, so the hub still runs on ${ownerEmail} — reconnect with that account to keep uploads and sync working.`,
-        href: `/p/${production._id}/settings`,
-      });
-    }
-    return connectionId;
+    // A DIFFERENT Google account: one row per account, and a row a hub
+    // depends on is never repointed (under `drive.file` the new token could
+    // see nothing the old account created). The first account someone
+    // connects stays their default (lib/driveAccounts) unless they flag
+    // another; this one becomes a choice for the next hub.
+    return await ctx.db.insert("googleConnections", {
+      userId: args.userId,
+      googleUserId: args.googleUserId,
+      email: args.email,
+      accessToken: args.accessToken,
+      refreshToken: args.refreshToken,
+      expiresAt: args.expiresAt,
+      scopes: args.scopes,
+    });
   },
 });
 
@@ -1997,6 +2045,9 @@ export const setHub = internalMutation({
     productionId: v.id("productions"),
     actorId: v.id("users"),
     rootName: v.string(),
+    ownerEmail: v.string(),
+    /** Set when this hub replaces another: the previous account's email. */
+    switchedFrom: v.optional(v.string()),
     hub: v.object({
       connectionId: v.id("googleConnections"),
       rootFolderId: v.string(),
@@ -2010,13 +2061,18 @@ export const setHub = internalMutation({
     const production = await ctx.db.get(args.productionId);
     if (production === null) throw new Error("Production not found");
     await ctx.db.patch(args.productionId, { hub: args.hub });
+    const actor = await actorName(ctx, args.actorId);
     await logActivity(ctx, {
       productionId: args.productionId,
       actorId: args.actorId,
-      type: "drive.hub_created",
+      type: args.switchedFrom !== undefined ? "drive.hub_switched" : "drive.hub_created",
       targetType: "production",
       targetId: args.productionId,
-      summary: `${await actorName(ctx, args.actorId)} created the Drive hub "${args.rootName}" (${Object.keys(args.hub.folderIds).length + 1} folders)`,
+      summary:
+        args.switchedFrom !== undefined
+          ? `${actor} moved the Drive hub from ${args.switchedFrom} to ${args.ownerEmail} — new folder tree "${args.rootName}"; files already in the old hub stay there`
+          : `${actor} created the Drive hub "${args.rootName}" in ${args.ownerEmail} (${Object.keys(args.hub.folderIds).length + 1} folders)`,
+      data: { ownerEmail: args.ownerEmail, ...(args.switchedFrom !== undefined ? { switchedFrom: args.switchedFrom } : {}) },
     });
     return null;
   },
@@ -2184,6 +2240,49 @@ export const setHubReadme = internalMutation({
       hub: { ...production.hub, readmeFileId: args.readmeFileId },
     });
     return null;
+  },
+});
+
+/** The account the Picker opens with (see getPickerConfig). */
+export const pickerConnection = internalQuery({
+  args: {
+    productionId: v.optional(v.id("productions")),
+    connectionId: v.optional(v.id("googleConnections")),
+  },
+  handler: async (ctx, args): Promise<{ connectionId: Id<"googleConnections"> } | null> => {
+    const userId = await requireUserId(ctx);
+    const rows = await myConnections(ctx, userId);
+    if (args.connectionId !== undefined) {
+      const own = rows.find((r) => r._id === args.connectionId);
+      if (own === undefined) {
+        throw new ConvexError("That Google account is not connected to your Kinolab account");
+      }
+      return { connectionId: own._id };
+    }
+    let hub: HubInfo | null = null;
+    if (args.productionId !== undefined) {
+      const { production } = await assertMemberForProduction(ctx, args.productionId);
+      hub = production.hub ?? null;
+    }
+    const chosen = readerConnection(rows, hub?.connectionId ?? null);
+    return chosen === null ? null : { connectionId: chosen._id };
+  },
+});
+
+/** One page of a replaced hub's shot-folder cache reset (scaffoldHub). */
+export const clearShotDriveFolders = internalMutation({
+  args: { productionId: v.id("productions"), cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, args): Promise<{ continueCursor: string; isDone: boolean }> => {
+    const page = await ctx.db
+      .query("shots")
+      .withIndex("by_production", (q) => q.eq("productionId", args.productionId))
+      .paginate({ numItems: 200, cursor: args.cursor });
+    for (const shot of page.page) {
+      if (shot.driveFolderId !== undefined) {
+        await ctx.db.patch(shot._id, { driveFolderId: undefined });
+      }
+    }
+    return { continueCursor: page.continueCursor, isDone: page.isDone };
   },
 });
 

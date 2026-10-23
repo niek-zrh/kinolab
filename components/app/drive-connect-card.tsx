@@ -10,6 +10,9 @@ import {
   FolderOpen,
   HardDrive,
   Loader2,
+  Plus,
+  Star,
+  Users,
 } from "lucide-react";
 import { ConvexError } from "convex/values";
 import { api } from "@/convex/_generated/api";
@@ -25,6 +28,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { openDrivePicker } from "@/lib/google-picker";
 import { copy } from "@/lib/copy";
+import { cn } from "@/lib/utils";
 
 /**
  * Convex error messages can be multiline
@@ -103,6 +107,7 @@ export function DriveConnectCard({
 }) {
   const status = useQuery(api.drive.connectionStatus, { productionId });
   const beginConnect = useMutation(api.drive.beginConnect);
+  const setDefaultConnection = useMutation(api.drive.setDefaultConnection);
   const getPickerConfig = useAction(api.drive.getPickerConfig);
   const scaffoldHub = useAction(api.drive.scaffoldHub);
 
@@ -110,7 +115,10 @@ export function DriveConnectCard({
   const [creating, setCreating] = useState(false);
   const [picking, setPicking] = useState(false);
   const [justCreated, setJustCreated] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  // The account the next hub is created in; null = my default.
+  const [chosenId, setChosenId] = useState<Id<"googleConnections"> | null>(null);
 
   /** Setup errors go inline (they need reading); the rest stay toasts. */
   const reportDriveError = (e: unknown) => {
@@ -132,14 +140,23 @@ export function DriveConnectCard({
     }
   };
 
+  const usable = (status?.myConnections ?? []).filter((c) => !c.revoked);
+  const defaultId = usable.find((c) => c.isDefault)?._id ?? usable[0]?._id ?? null;
+  const activeId = chosenId !== null && usable.some((c) => c._id === chosenId) ? chosenId : defaultId;
+  const replacing = status?.hub.connected === true;
+
   const scaffold = async (parentFolderId?: string) => {
+    if (activeId === null) return;
     setCreating(true);
     try {
       await scaffoldHub({
         productionId,
+        connectionId: activeId,
+        ...(replacing ? { replace: true } : {}),
         ...(parentFolderId !== undefined ? { parentFolderId } : {}),
       });
       setJustCreated(true);
+      setSwitching(false);
     } catch (e) {
       // scaffoldHub also throws the not-configured error (§7.2) — inline it.
       reportDriveError(e);
@@ -149,9 +166,11 @@ export function DriveConnectCard({
   };
 
   const pickFolderAndScaffold = async () => {
+    if (activeId === null) return;
     setPicking(true);
     try {
-      const config = await getPickerConfig({});
+      // The folder is picked in the account the hub will live in.
+      const config = await getPickerConfig({ connectionId: activeId });
       const picked = await openDrivePicker(config, { foldersOnly: true });
       // null = closed without choosing; leave the card as it was.
       if (!picked || picked.length === 0) return;
@@ -164,6 +183,31 @@ export function DriveConnectCard({
       setPicking(false);
     }
   };
+
+  const makeDefault = async (connectionId: Id<"googleConnections">) => {
+    try {
+      await setDefaultConnection({ connectionId });
+    } catch (e) {
+      reportDriveError(e);
+    }
+  };
+
+  const chooser = status && (
+    <AccountChooser
+      accounts={status.myConnections}
+      activeId={activeId}
+      onChoose={setChosenId}
+      onMakeDefault={makeDefault}
+      onConnectAnother={connect}
+      connecting={connecting}
+      creating={creating}
+      picking={picking}
+      onCreateInRoot={() => void scaffold()}
+      onPickFolder={() => void pickFolderAndScaffold()}
+      replacing={replacing}
+      currentOwnerId={status.hub.ownerConnectionId ?? null}
+    />
+  );
 
   return (
     <Card>
@@ -187,20 +231,47 @@ export function DriveConnectCard({
               </div>
             )}
             {status.hub.connected && status.hub.rootFolderId ? (
-              <HubStatus
-                rootFolderId={status.hub.rootFolderId}
-                ownerEmail={status.hub.ownerEmail}
-                revoked={status.hub.revoked === true}
-                isHubOwner={
-                  status.hub.ownerEmail === undefined ||
-                  status.myConnection?.email.toLowerCase() ===
-                    status.hub.ownerEmail.toLowerCase()
-                }
-                justCreated={justCreated}
-                onReconnect={connect}
-                reconnecting={connecting}
-              />
-            ) : !status.myConnection || status.myConnection.revoked ? (
+              <>
+                <HubStatus
+                  rootFolderId={status.hub.rootFolderId}
+                  ownerEmail={status.hub.ownerEmail}
+                  revoked={status.hub.revoked === true}
+                  isHubOwner={status.hub.ownerIsMine === true}
+                  justCreated={justCreated}
+                  onReconnect={connect}
+                  reconnecting={connecting}
+                />
+                {canManage && !switching && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="self-start text-muted-foreground"
+                    onClick={() => setSwitching(true)}
+                  >
+                    <Users className="size-3.5" /> Use a different Google account…
+                  </Button>
+                )}
+                {canManage && switching && (
+                  <div className="flex flex-col gap-2.5 rounded-lg border p-3">
+                    <p className="text-sm">
+                      A new folder tree is created in the account you choose.
+                      Files already in the current hub stay where they are and
+                      keep working; new uploads and picks go to the new hub.
+                    </p>
+                    {chooser}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="self-start"
+                      disabled={creating}
+                      onClick={() => setSwitching(false)}
+                    >
+                      Keep the current account
+                    </Button>
+                  </div>
+                )}
+              </>
+            ) : usable.length === 0 ? (
               // (b) no usable personal connection yet → send them through OAuth.
               <div className="flex flex-col items-start gap-2">
                 {status.myConnection?.revoked && (
@@ -220,45 +291,8 @@ export function DriveConnectCard({
                 </Button>
               </div>
             ) : canManage ? (
-              // (c) connected, no hub yet → choose where the hub lives.
-              <div className="flex flex-col gap-2.5">
-                <p className="text-sm">
-                  Connected as{" "}
-                  <span className="font-medium">{status.myConnection.email}</span>.
-                </p>
-                {creating ? (
-                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" /> Creating folders…
-                  </p>
-                ) : (
-                  <>
-                    <p className="text-sm text-muted-foreground">
-                      Choose where the Hub lives:
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => void scaffold()}
-                        disabled={picking}
-                      >
-                        <HardDrive className="size-4" /> My Drive root
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => void pickFolderAndScaffold()}
-                        disabled={picking}
-                      >
-                        {picking ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <FolderOpen className="size-4" />
-                        )}
-                        Pick a folder…
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </div>
+              // (c) connected, no hub yet → choose the account and where it lives.
+              chooser
             ) : (
               <p className="text-sm text-muted-foreground">
                 No Drive hub yet. An owner or producer can create one here.
@@ -268,6 +302,147 @@ export function DriveConnectCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Which of my Google accounts the hub is created in, and where. The default
+ * is the first account I connected (a star marks it; any other can take the
+ * flag); "Connect another" runs the Google consent flow again and the new
+ * account appears here when it returns.
+ */
+function AccountChooser({
+  accounts,
+  activeId,
+  onChoose,
+  onMakeDefault,
+  onConnectAnother,
+  connecting,
+  creating,
+  picking,
+  onCreateInRoot,
+  onPickFolder,
+  replacing,
+  currentOwnerId,
+}: {
+  accounts: {
+    _id: Id<"googleConnections">;
+    email: string;
+    revoked: boolean;
+    isDefault: boolean;
+  }[];
+  activeId: Id<"googleConnections"> | null;
+  onChoose: (id: Id<"googleConnections">) => void;
+  onMakeDefault: (id: Id<"googleConnections">) => Promise<void>;
+  onConnectAnother: () => Promise<void>;
+  connecting: boolean;
+  creating: boolean;
+  picking: boolean;
+  onCreateInRoot: () => void;
+  onPickFolder: () => void;
+  replacing: boolean;
+  currentOwnerId: Id<"googleConnections"> | null;
+}) {
+  const active = accounts.find((a) => a._id === activeId);
+  return (
+    <div className="flex flex-col gap-2.5">
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Google account for this production
+        </legend>
+        {accounts.map((account) => {
+          const isCurrent = account._id === currentOwnerId;
+          return (
+            <label
+              key={account._id}
+              className={cn(
+                "flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm",
+                account._id === activeId ? "border-foreground/40 bg-accent/40" : "border-border",
+                (account.revoked || isCurrent) && "cursor-not-allowed opacity-60",
+              )}
+            >
+              <input
+                type="radio"
+                name="hub-account"
+                className="accent-foreground"
+                checked={account._id === activeId}
+                disabled={account.revoked || isCurrent}
+                onChange={() => onChoose(account._id)}
+              />
+              <span className="min-w-0 flex-1 truncate">{account.email}</span>
+              {account.isDefault ? (
+                <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <Star className="size-3 fill-current" /> default
+                </span>
+              ) : (
+                !account.revoked && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void onMakeDefault(account._id);
+                    }}
+                    className="text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+                  >
+                    Make default
+                  </button>
+                )
+              )}
+              {account.revoked && (
+                <span className="text-[10px] text-destructive">expired</span>
+              )}
+              {isCurrent && (
+                <span className="text-[10px] text-muted-foreground">current hub</span>
+              )}
+            </label>
+          );
+        })}
+      </fieldset>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="self-start text-muted-foreground"
+        onClick={() => void onConnectAnother()}
+        disabled={connecting}
+      >
+        {connecting ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+        Connect another Google account
+      </Button>
+      {creating ? (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" /> Creating folders…
+        </p>
+      ) : (
+        <>
+          <p className="text-sm text-muted-foreground">
+            {active
+              ? `Choose where the Hub lives in ${active.email}:`
+              : "Choose where the Hub lives:"}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={onCreateInRoot}
+              disabled={picking || active === undefined}
+            >
+              <HardDrive className="size-4" /> {replacing ? "New hub in My Drive root" : "My Drive root"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={onPickFolder}
+              disabled={picking || active === undefined}
+            >
+              {picking ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <FolderOpen className="size-4" />
+              )}
+              Pick a folder…
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -283,8 +458,8 @@ function HubStatus({
   rootFolderId: string;
   ownerEmail?: string;
   revoked: boolean;
-  /** Reconnecting patches MY googleConnections row (one per user), so it only
-   *  repairs the hub when I am the account behind productions.hub.connectionId. */
+  /** Reconnecting re-runs Google's consent for one of MY accounts, so it only
+   *  repairs the hub when its account is one of mine. */
   isHubOwner: boolean;
   justCreated: boolean;
   onReconnect: () => Promise<void>;

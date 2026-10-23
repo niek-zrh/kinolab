@@ -144,6 +144,9 @@ const SECTIONS: Section[] = [
       {
         text: "Connecting the Drive hub (Settings › Drive hub) builds the production's folder tree in Drive — Admin, Development, Pre-Production, Previews, Production › Shots, Post, Delivery — and leaves a READ ME guide at the top. Keep that structure as Kinolab made it: renaming, moving or deleting folders in Drive breaks the links between shots and their files.",
       },
+      {
+        text: "The hub lives in one of your Google accounts. The first account you connect is your default; connect another and choose it per production when a project belongs in a client's Drive. Use a different Google account… on an existing hub builds a fresh tree there — files already in the old hub stay where they are and keep working, new uploads and picks go to the new one.",
+      },
     ],
   },
 ];

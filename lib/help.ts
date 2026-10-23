@@ -184,6 +184,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Appearance is personal to you and this device.",
       "Stages, gate approvers, links and the Drive hub are production-wide.",
       "Connecting the Drive hub builds the folder tree in Drive and leaves a READ ME guide at the top. Keep that structure as Kinolab made it — renaming or moving folders in Drive breaks the links to shots.",
+      "The hub lives in one of your Google accounts: the first you connected is your default, and you can connect another and pick it per production. Switching an existing hub builds a new tree; files already in the old one stay where they are.",
     ],
   },
   {
